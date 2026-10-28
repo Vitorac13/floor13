@@ -661,14 +661,12 @@ O resultado esperado é um protótipo jogável de cinco fases que demonstre, de 
 
 ---
 
-# 16. PROTÓTIPO IMPLEMENTADO — ETAPAS 1 E 2
+# 16. IMPLEMENTAÇÃO ATUAL — PRIMEIRA FASE
 
-As etapas 1 e 2 estão implementadas nos arquivos `graph.py`, `algorithms.py` e
-`main.py`. O protótipo inclui um grafo não direcionado com pesos, BFS, Dijkstra,
-verificação de conectividade e uma janela gráfica simples para selecionar e
-utilizar elevadores entre andares conectados. As etapas seguintes, como itens,
-exploração progressiva, pontuação e cinco fases completas, ainda não fazem
-parte desta entrega.
+Além da estrutura matemática e da interface inicial, a fase **Primeiro
+contato** já tem seis andares, exploração, itens obrigatórios e bônus, coleta e
+condição de vitória. Os dados e a validação da fase ficam fora da apresentação
+gráfica, e as regras de progresso são reutilizáveis por futuras fases.
 
 Para instalar a biblioteca gráfica e executar o protótipo no Windows:
 
@@ -677,12 +675,21 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
-Na janela, clique em um andar conectado e depois em **VIAJAR** (ou pressione
-Enter). Também é possível selecionar destinos com as teclas numéricas; Esc
-fecha o jogo.
+Na janela:
 
-Para executar os testes da estrutura matematica:
+- Selecione um destino conectado clicando nele ou usando as teclas `1` a `6`.
+- Viaje com **VIAJAR** ou `Enter`.
+- Colete itens disponíveis no andar com **COLETAR** ou `E`. Os bônus são
+  opcionais.
+- `Esc` fecha o jogo.
+
+Para executar os testes matemáticos e de progressão:
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
+
+Os testes cobrem a estrutura do grafo, BFS e Dijkstra, conectividade,
+movimentação, exploração, coleta, saída bloqueada, conclusão da fase e a
+possibilidade de vencer sem bônus. Os desafios de Euler/Hamilton, pontuação,
+salvamento e as outras fases ainda não foram implementados.

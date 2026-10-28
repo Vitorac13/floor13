@@ -1,4 +1,4 @@
-"""Prototipo Pygame da etapa 2: navegar pelos elevadores disponiveis."""
+"""Prototipo Pygame da fase Primeiro contato."""
 
 from __future__ import annotations
 
@@ -6,7 +6,9 @@ import sys
 
 import pygame
 
-from graph import Graph
+from game_state import GameState
+from level import ItemKind
+from level_manager import LevelManager
 
 WIDTH = 960
 HEIGHT = 640
@@ -20,41 +22,28 @@ ACCENT_DARK = (43, 125, 117)
 WARNING = (244, 190, 105)
 
 
-def create_demo_building() -> Graph[int]:
-    """Cria o pequeno grafo fixo utilizado no prototipo inicial."""
-    building = Graph[int](range(1, 9))
-    for first, second in (
-        (1, 2),
-        (1, 4),
-        (2, 3),
-        (2, 5),
-        (3, 6),
-        (4, 5),
-        (4, 7),
-        (5, 6),
-        (5, 8),
-        (7, 8),
-    ):
-        building.add_edge(first, second)
-    return building
-
-
 class ElevatorPrototype:
     def __init__(self) -> None:
         pygame.init()
-        pygame.display.set_caption("Floor 13 — prototipo")
+        self.level = LevelManager.create_first_contact()
+        self.game = GameState(self.level)
+        pygame.display.set_caption("Floor 13 — Primeiro contato")
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self.clock = pygame.time.Clock()
         self.title_font = pygame.font.Font(None, 42)
         self.heading_font = pygame.font.Font(None, 29)
         self.body_font = pygame.font.Font(None, 24)
         self.small_font = pygame.font.Font(None, 20)
-        self.graph = create_demo_building()
-        self.current_floor = 1
+        self.floor_font = pygame.font.Font(None, 96)
         self.selected_floor: int | None = None
-        self.message = "Escolha um destino conectado pelo elevador."
+        self.message = "Explore os andares e colete os itens para encontrar a saida."
         self.destination_rects: dict[int, pygame.Rect] = {}
-        self.travel_rect = pygame.Rect(610, 525, 285, 58)
+        self.collect_rect = pygame.Rect(600, 444, 270, 54)
+        self.travel_rect = pygame.Rect(600, 510, 270, 58)
+
+    @property
+    def current_floor(self) -> int:
+        return self.game.current_floor
 
     def run(self) -> None:
         while True:
@@ -73,19 +62,26 @@ class ElevatorPrototype:
                     sys.exit()
                 if event.key == pygame.K_RETURN:
                     self._travel()
-                if pygame.K_1 <= event.key <= pygame.K_8:
+                if event.key == pygame.K_e:
+                    self._collect_items()
+                if pygame.K_1 <= event.key <= pygame.K_6:
                     self._select_floor(event.key - pygame.K_0)
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self.collect_rect.collidepoint(event.pos):
+                    self._collect_items()
+                    continue
+                if self.travel_rect.collidepoint(event.pos):
+                    self._travel()
+                    continue
                 for floor, rect in self.destination_rects.items():
                     if rect.collidepoint(event.pos):
                         self._select_floor(floor)
                         break
-                else:
-                    if self.travel_rect.collidepoint(event.pos):
-                        self._travel()
 
     def _select_floor(self, floor: int) -> None:
-        if self.graph.has_edge(self.current_floor, floor):
+        if self.game.is_complete:
+            return
+        if self.level.graph.has_edge(self.current_floor, floor):
             self.selected_floor = floor
             self.message = f"Destino selecionado: andar {floor:02d}."
         else:
@@ -93,12 +89,28 @@ class ElevatorPrototype:
             self.message = f"Nao ha elevador do andar {self.current_floor:02d} para {floor:02d}."
 
     def _travel(self) -> None:
+        if self.game.is_complete:
+            return
         if self.selected_floor is None:
             self.message = "Selecione primeiro um dos destinos disponiveis."
             return
-        self.current_floor = self.selected_floor
+        self.message = self.game.move_to(self.selected_floor)
         self.selected_floor = None
-        self.message = f"Voce chegou ao andar {self.current_floor:02d}."
+
+    def _collect_items(self) -> None:
+        if self.game.is_complete:
+            return
+        items = self.game.collect_items_here()
+        if not items:
+            self.message = "Nao ha itens para coletar neste andar."
+            return
+        names = ", ".join(item.name for item in items)
+        if all(item.kind is ItemKind.REQUIRED for item in items):
+            self.message = f"Item obrigatorio coletado: {names}."
+        elif all(item.kind is ItemKind.BONUS for item in items):
+            self.message = f"Bonus coletado: {names}."
+        else:
+            self.message = f"Itens coletados: {names}."
 
     def _draw(self) -> None:
         self.screen.fill(BACKGROUND)
@@ -111,7 +123,7 @@ class ElevatorPrototype:
     def _draw_header(self) -> None:
         self._text("FLOOR 13", self.title_font, TEXT, (64, 48))
         self._text(
-            "PROTOTIPO • ETAPA 2: ELEVADORES",
+            f"FASE 1 • {self.level.name.upper()}",
             self.small_font,
             ACCENT,
             (66, 91),
@@ -119,41 +131,69 @@ class ElevatorPrototype:
         pygame.draw.line(self.screen, PANEL_LIGHT, (64, 126), (896, 126), 2)
 
     def _draw_floor_panel(self) -> None:
-        rect = pygame.Rect(64, 158, 480, 410)
+        rect = pygame.Rect(64, 145, 480, 439)
         pygame.draw.rect(self.screen, PANEL, rect, border_radius=18)
         pygame.draw.rect(self.screen, PANEL_LIGHT, rect, width=1, border_radius=18)
-        self._text("ANDAR ATUAL", self.small_font, MUTED, (94, 188))
+        self._text("ANDAR ATUAL", self.small_font, MUTED, (94, 171))
 
-        floor_card = pygame.Rect(94, 226, 420, 230)
+        floor_card = pygame.Rect(94, 204, 420, 154)
         pygame.draw.rect(self.screen, (25, 30, 43), floor_card, border_radius=16)
         pygame.draw.rect(self.screen, ACCENT_DARK, floor_card, width=2, border_radius=16)
         self._text(
             f"{self.current_floor:02d}",
-            pygame.font.Font(None, 116),
+            self.floor_font,
             TEXT,
-            (124, 258),
+            (124, 225),
         )
-        self._text("PAVIMENTO", self.small_font, MUTED, (130, 365))
-        self._draw_elevator_icon(390, 277)
-        self._text("ELEVADOR", self.small_font, ACCENT, (369, 382))
-        self._text("O que existe neste andar?", self.body_font, TEXT, (94, 489))
+        self._text("PAVIMENTO", self.small_font, MUTED, (130, 315))
+        self._draw_elevator_icon(390, 215)
+        self._text("ELEVADOR", self.small_font, ACCENT, (369, 334))
+
+        self._text("ITENS NESTE ANDAR", self.small_font, MUTED, (94, 378))
+        current_items = self.game.items_on_current_floor
+        if current_items:
+            for index, item in enumerate(current_items[:2]):
+                color = ACCENT if item.kind is ItemKind.REQUIRED else WARNING
+                self._text(
+                    f"{item.kind.value}: {item.name}",
+                    self.small_font,
+                    color,
+                    (94, 404 + index * 23),
+                )
+            self._text("Pressione E ou COLETAR", self.small_font, TEXT, (94, 451))
+        else:
+            self._text("Nenhum item disponivel.", self.small_font, MUTED, (94, 404))
+
+        required_count = sum(
+            item.kind is ItemKind.REQUIRED for item in self.level.items
+        )
+        bonus_count = sum(item.kind is ItemKind.BONUS for item in self.level.items)
         self._text(
-            f"{len(self.graph.neighbors(self.current_floor))} destinos conectados",
+            f"Obrigatorios: {len(self.game.collected_required)}/{required_count}"
+            f"   Bonus: {len(self.game.collected_bonus)}/{bonus_count}",
             self.small_font,
-            MUTED,
-            (94, 522),
+            TEXT,
+            (94, 492),
         )
+        visited = "  ".join(
+            f"{floor:02d}" if floor in self.game.visited_floors else "??"
+            for floor in self.level.graph.vertices
+        )
+        self._text("Exploracao:", self.small_font, MUTED, (94, 522))
+        self._text(visited, self.small_font, ACCENT, (190, 522))
 
     def _draw_destination_panel(self) -> None:
-        rect = pygame.Rect(574, 158, 322, 346)
+        rect = pygame.Rect(574, 145, 322, 439)
         pygame.draw.rect(self.screen, PANEL, rect, border_radius=18)
         pygame.draw.rect(self.screen, PANEL_LIGHT, rect, width=1, border_radius=18)
-        self._text("ELEVADORES DISPONIVEIS", self.heading_font, TEXT, (600, 188))
-        self._text("Selecione um destino", self.small_font, MUTED, (600, 220))
+        self._text("DESTINOS CONECTADOS", self.heading_font, TEXT, (600, 171))
+        self._text("Selecione um elevador", self.small_font, MUTED, (600, 201))
 
         self.destination_rects.clear()
-        for index, (floor, _) in enumerate(self.graph.neighbors(self.current_floor)):
-            destination = pygame.Rect(600, 260 + index * 64, 270, 50)
+        for index, (floor, _) in enumerate(
+            self.level.graph.neighbors(self.current_floor)
+        ):
+            destination = pygame.Rect(600, 236 + index * 62, 270, 48)
             self.destination_rects[floor] = destination
             selected = floor == self.selected_floor
             color = ACCENT_DARK if selected else PANEL_LIGHT
@@ -169,18 +209,32 @@ class ElevatorPrototype:
                 f"ANDAR {floor:02d}",
                 self.body_font,
                 TEXT,
-                (destination.x + 17, destination.y + 14),
+                (destination.x + 17, destination.y + 12),
             )
-            self._text("›", self.heading_font, ACCENT, (destination.right - 32, destination.y + 11))
+            self._text(
+                "›",
+                self.heading_font,
+                ACCENT,
+                (destination.right - 32, destination.y + 9),
+            )
 
-        self.travel_rect = pygame.Rect(600, 525, 270, 58)
+        self.collect_rect = pygame.Rect(600, 444, 270, 54)
+        pygame.draw.rect(
+            self.screen,
+            WARNING if self.game.items_on_current_floor else PANEL_LIGHT,
+            self.collect_rect,
+            border_radius=12,
+        )
+        self._text("COLETAR  [E]", self.body_font, BACKGROUND, (670, 460))
+
+        self.travel_rect = pygame.Rect(600, 510, 270, 58)
         pygame.draw.rect(
             self.screen,
             ACCENT_DARK if self.selected_floor is not None else PANEL_LIGHT,
             self.travel_rect,
             border_radius=12,
         )
-        self._text("VIAJAR  [ENTER]", self.body_font, TEXT, (635, 543))
+        self._text("VIAJAR  [ENTER]", self.body_font, TEXT, (635, 528))
 
     def _draw_footer(self) -> None:
         self._text(self.message, self.small_font, WARNING, (66, 599))
