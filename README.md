@@ -696,6 +696,23 @@ também não utiliza laços (conexões de um andar para ele mesmo).
 
 Uma rota de Euler válida é `1 → 2 → 3 → 1 → 4 → 5 → 2 → 4`.
 
+## Fase 5 — A saída
+
+A fase final usa um grafo ponderado próprio com seis andares. O jogador parte
+do andar 1, alcança a saída no andar 6 e retorna ao andar 1. Os pesos são
+positivos e aparecem em cada elevador. Não há restrições de revisita: cada
+deslocamento válido soma seu peso ao custo da ida ou do retorno.
+
+Dijkstra calcula os menores custos de cada trecho. A referência total é a soma
+dos mínimos da ida e do retorno; a interface só a revela ao terminar a
+tentativa, para manter o planejamento como parte do desafio. A vitória exige
+concluir os dois trechos com esse custo mínimo. Qualquer combinação de rotas
+com o mesmo custo é aceita, sem comparar a sequência a uma rota fixa.
+
+Uma solução ótima para validação manual é `1 → 2 → 6 → 4 → 3 → 1`:
+ida com custo 4 e retorno com custo 4, totalizando **8**. A ida alternativa
+`1 → 3 → 4 → 6` também custa 4, e o retorno `6 → 2 → 1` custa 4.
+
 Para instalar a biblioteca gráfica e executar o protótipo no Windows:
 
 ```powershell
@@ -705,7 +722,7 @@ python main.py
 
 Na janela:
 
-- Alterne entre as fases com `F1` a `F4`; o progresso de cada uma é mantido
+- Alterne entre as fases com `F1` a `F5`; o progresso de cada uma é mantido
   enquanto a janela estiver aberta.
 - Selecione um destino conectado clicando nele ou usando as teclas `1` a `6`.
 - Viaje com **VIAJAR** ou `Enter`.
@@ -719,6 +736,10 @@ Na janela:
   para iniciar outra tentativa.
 - Na fase 4, cada conexão usada é marcada e não pode ser atravessada de novo;
   revisitar andares continua permitido. Use **REINICIAR** ou `R` para recomeçar.
+- Na fase 5, alcance a saída e volte ao início com o menor custo total.
+  Os custos de ida, retorno e percurso são mostrados durante a tentativa; o
+  custo mínimo de referência aparece ao final. Use **REINICIAR** ou `R` para
+  recomeçar.
 - `Esc` fecha o jogo.
 
 Para executar os testes matemáticos e de progressão:
@@ -729,6 +750,6 @@ python -m unittest discover -s tests -v
 
 Os testes cobrem a estrutura do grafo, BFS e Dijkstra, conectividade,
 movimentação, exploração, coleta, saída bloqueada, conclusão da fase,
-possibilidade de vencer sem bônus, o desafio hamiltoniano da fase 2 e o custo
-mínimo da fase 3, além do caminho de Euler da fase 4. A fase 5, pontuação e
-salvamento ainda não foram implementados.
+possibilidade de vencer sem bônus e os desafios hamiltoniano, econômico,
+euleriano e de ida e retorno das fases 2 a 5. Pontuação e salvamento ainda não
+foram implementados.
