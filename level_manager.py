@@ -10,9 +10,6 @@ from level import Collectible, ItemKind, Level
 
 
 class LevelManager:
-    REQUIRED_ITEM_COUNT = 3
-    BONUS_ITEM_COUNT = 3
-
     @staticmethod
     def create_first_contact() -> Level:
         """Constroi a fase de demonstracao Primeiro contato."""
@@ -36,9 +33,7 @@ class LevelManager:
                 Collectible("chave", "Chave antiga", 2, ItemKind.REQUIRED),
                 Collectible("fusivel", "Fusivel", 3, ItemKind.REQUIRED),
                 Collectible("cartao", "Cartao de acesso", 4, ItemKind.REQUIRED),
-                Collectible("moeda", "Moeda estranha", 1, ItemKind.BONUS),
                 Collectible("foto", "Fotografia", 5, ItemKind.BONUS),
-                Collectible("bilhete", "Bilhete amassado", 6, ItemKind.BONUS),
             ),
         )
         LevelManager.validate(level)
@@ -57,26 +52,18 @@ class LevelManager:
         identifiers = [item.identifier for item in level.items]
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("Os identificadores dos itens devem ser unicos.")
-        if len(level.items) != cls.REQUIRED_ITEM_COUNT + cls.BONUS_ITEM_COUNT:
-            raise ValueError("A fase deve ter exatamente seis itens.")
         if any(not level.graph.has_vertex(item.floor) for item in level.items):
             raise ValueError("Todos os itens devem estar em andares existentes.")
 
+        if any(not isinstance(item.kind, ItemKind) for item in level.items):
+            raise ValueError("Todos os itens devem ter uma categoria valida.")
         required = [
             item for item in level.items if item.kind is ItemKind.REQUIRED
         ]
         bonuses = [item for item in level.items if item.kind is ItemKind.BONUS]
-        if len(required) != cls.REQUIRED_ITEM_COUNT:
-            raise ValueError("A fase deve ter exatamente tres itens obrigatorios.")
-        if len(bonuses) != cls.BONUS_ITEM_COUNT:
-            raise ValueError("A fase deve ter exatamente tres itens bonus.")
 
         required_floors = [item.floor for item in required]
         bonus_floors = [item.floor for item in bonuses]
-        if len(required_floors) != len(set(required_floors)):
-            raise ValueError("Itens obrigatorios devem estar em andares distintos.")
-        if len(bonus_floors) != len(set(bonus_floors)):
-            raise ValueError("Itens bonus devem estar em andares distintos.")
         if set(required_floors) & set(bonus_floors):
             raise ValueError("Itens bonus nao podem compartilhar andar com obrigatorios.")
         if not cls.has_completion_route(level):

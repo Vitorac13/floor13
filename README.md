@@ -668,6 +668,12 @@ contato** já tem seis andares, exploração, itens obrigatórios e bônus, cole
 condição de vitória. Os dados e a validação da fase ficam fora da apresentação
 gráfica, e as regras de progresso são reutilizáveis por futuras fases.
 
+Na configuração atual, os andares 1 e 6 não têm itens; os andares 2, 3 e 4
+contêm os três itens obrigatórios e o andar 5 contém um bônus opcional. A lista
+de itens da fase pode ser alterada sem preencher todos os andares ou manter
+quantidades fixas. `Level.items_by_floor` fornece uma lista (possivelmente
+vazia) para cada vértice, sem duplicar o grafo.
+
 Para instalar a biblioteca gráfica e executar o protótipo no Windows:
 
 ```powershell

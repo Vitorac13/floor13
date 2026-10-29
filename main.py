@@ -152,17 +152,27 @@ class ElevatorPrototype:
         self._text("ITENS NESTE ANDAR", self.small_font, MUTED, (94, 378))
         current_items = self.game.items_on_current_floor
         if current_items:
-            for index, item in enumerate(current_items[:2]):
+            visible_items = current_items[:3]
+            for index, item in enumerate(visible_items):
                 color = ACCENT if item.kind is ItemKind.REQUIRED else WARNING
                 self._text(
                     f"{item.kind.value}: {item.name}",
                     self.small_font,
                     color,
-                    (94, 404 + index * 23),
+                    (94, 402 + index * 21),
                 )
-            self._text("Pressione E ou COLETAR", self.small_font, TEXT, (94, 451))
+            remaining_items = len(current_items) - len(visible_items)
+            if remaining_items:
+                self._text(
+                    f"+{remaining_items} outro(s) item(ns)",
+                    self.small_font,
+                    MUTED,
+                    (94, 465),
+                )
+        elif self.game.all_items_on_current_floor:
+            self._text("Itens deste andar ja coletados.", self.small_font, MUTED, (94, 404))
         else:
-            self._text("Nenhum item disponivel.", self.small_font, MUTED, (94, 404))
+            self._text("Este andar nao possui itens.", self.small_font, MUTED, (94, 404))
 
         required_count = sum(
             item.kind is ItemKind.REQUIRED for item in self.level.items
@@ -173,14 +183,14 @@ class ElevatorPrototype:
             f"   Bonus: {len(self.game.collected_bonus)}/{bonus_count}",
             self.small_font,
             TEXT,
-            (94, 492),
+            (94, 488),
         )
         visited = "  ".join(
             f"{floor:02d}" if floor in self.game.visited_floors else "??"
             for floor in self.level.graph.vertices
         )
-        self._text("Exploracao:", self.small_font, MUTED, (94, 522))
-        self._text(visited, self.small_font, ACCENT, (190, 522))
+        self._text("Exploracao:", self.small_font, MUTED, (94, 518))
+        self._text(visited, self.small_font, ACCENT, (190, 518))
 
     def _draw_destination_panel(self) -> None:
         rect = pygame.Rect(574, 145, 322, 439)

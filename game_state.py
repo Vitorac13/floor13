@@ -28,10 +28,13 @@ class GameState:
         collected = self.collected_required | self.collected_bonus
         return tuple(
             item
-            for item in self.level.items
-            if item.floor == self.current_floor
-            and item.identifier not in collected
+            for item in self.all_items_on_current_floor
+            if item.identifier not in collected
         )
+
+    @property
+    def all_items_on_current_floor(self) -> tuple[Collectible, ...]:
+        return self.level.items_by_floor[self.current_floor]
 
     def move_to(self, destination: int) -> str:
         if self.is_complete:

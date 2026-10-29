@@ -1,8 +1,9 @@
 import unittest
+from dataclasses import replace
 
 from algorithms import is_connected
 from game_state import GameState
-from level import ItemKind
+from level import Collectible, ItemKind
 from level_manager import LevelManager
 
 
@@ -45,14 +46,41 @@ class FirstContactTests(unittest.TestCase):
         self.assertEqual([item.identifier for item in collected], ["chave"])
         self.assertEqual(self.game.collected_required, {"chave"})
         self.assertEqual(self.game.missing_required_items[0].identifier, "fusivel")
+        self.game.move_to(3)
+        self.game.move_to(2)
+        self.assertEqual(self.game.items_on_current_floor, ())
         self.assertEqual(self.game.collect_items_here(), ())
 
     def test_bonus_items_can_be_collected_without_becoming_required(self) -> None:
+        self.game.move_to(2)
+        self.game.move_to(5)
         collected = self.game.collect_items_here()
 
-        self.assertEqual([item.identifier for item in collected], ["moeda"])
-        self.assertEqual(self.game.collected_bonus, {"moeda"})
+        self.assertEqual([item.identifier for item in collected], ["foto"])
+        self.assertEqual(self.game.collected_bonus, {"foto"})
         self.assertEqual(len(self.game.missing_required_items), 3)
+        self.game.move_to(2)
+        self.game.move_to(5)
+        self.assertEqual(self.game.collect_items_here(), ())
+
+    def test_floor_without_items_is_a_valid_empty_state(self) -> None:
+        self.assertEqual(self.level.items_by_floor[1], ())
+        self.assertEqual(self.level.items_by_floor[6], ())
+        self.assertEqual(self.game.items_on_current_floor, ())
+        self.assertEqual(self.game.collect_items_here(), ())
+        self.assertEqual(self.game.collected_required, set())
+        self.assertEqual(self.game.collected_bonus, set())
+
+    def test_visiting_an_empty_floor_does_not_change_item_progress(self) -> None:
+        self.game.move_to(2)
+        self.game.move_to(5)
+        message = self.game.move_to(6)
+
+        self.assertIn("Saida bloqueada", message)
+        self.assertEqual(self.game.visited_floors, {1, 2, 5, 6})
+        self.assertEqual(self.game.items_on_current_floor, ())
+        self.assertEqual(self.game.collect_items_here(), ())
+        self.assertEqual(self.game.collected_required, set())
 
     def test_exit_does_not_finish_phase_while_required_items_are_missing(self) -> None:
         self.game.move_to(2)
@@ -108,23 +136,42 @@ class FirstContactTests(unittest.TestCase):
         self.assertEqual(len(self.level.graph.vertices), 6)
         self.assertTrue(is_connected(self.level.graph))
         self.assertTrue(LevelManager.has_completion_route(self.level))
-        self.assertEqual(
-            sum(item.kind is ItemKind.REQUIRED for item in self.level.items), 3
-        )
-        self.assertEqual(
-            sum(item.kind is ItemKind.BONUS for item in self.level.items), 3
-        )
         required_floors = {
-            item.floor
-            for item in self.level.items
+            item.floor for item in self.level.items
             if item.kind is ItemKind.REQUIRED
         }
         bonus_floors = {
-            item.floor for item in self.level.items if item.kind is ItemKind.BONUS
+            item.floor for item in self.level.items
+            if item.kind is ItemKind.BONUS
         }
         self.assertEqual(len(required_floors), 3)
-        self.assertEqual(len(bonus_floors), 3)
+        self.assertEqual(bonus_floors, {5})
         self.assertTrue(required_floors.isdisjoint(bonus_floors))
+
+    def test_level_configuration_allows_variable_item_counts(self) -> None:
+        level_without_bonus_items = replace(
+            self.level,
+            items=tuple(
+                item for item in self.level.items
+                if item.kind is ItemKind.REQUIRED
+            ),
+        )
+
+        LevelManager.validate(level_without_bonus_items)
+
+        self.assertTrue(LevelManager.has_completion_route(level_without_bonus_items))
+        self.assertEqual(level_without_bonus_items.items_by_floor[5], ())
+        self.assertEqual(level_without_bonus_items.items_by_floor[6], ())
+
+    def test_bonus_and_required_items_cannot_share_a_floor(self) -> None:
+        conflicting_level = replace(
+            self.level,
+            items=self.level.items
+            + (Collectible("other", "Outro item", 2, ItemKind.BONUS),),
+        )
+
+        with self.assertRaisesRegex(ValueError, "nao podem compartilhar andar"):
+            LevelManager.validate(conflicting_level)
 
 
 if __name__ == "__main__":
