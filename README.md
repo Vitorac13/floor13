@@ -661,7 +661,7 @@ O resultado esperado é um protótipo jogável de cinco fases que demonstre, de 
 
 ---
 
-# 16. IMPLEMENTAÇÃO ATUAL — FASES 1 E 2
+# 16. IMPLEMENTAÇÃO ATUAL — FASES 1 A 3
 
 Além da estrutura matemática e da interface inicial, a fase **Primeiro
 contato** já tem seis andares, exploração, itens obrigatórios e bônus, coleta e
@@ -679,6 +679,13 @@ visita cada um dos seis vértices uma única vez, começando no andar 1 e
 terminando obrigatoriamente no andar 6. A rota é validada ao carregar o
 desafio; becos sem saída bloqueiam a tentativa, que pode ser reiniciada.
 
+A fase **Elevador econômico** usa o grafo ponderado e o Dijkstra existente para
+calcular custo mínimo e rota de referência. Os custos são exibidos junto aos
+destinos conectados; chegar ao andar 6 por uma rota mais cara encerra a tentativa
+sem vitória, permitindo reiniciá-la.
+
+Uma rota ótima de referência é `1 → 3 → 5 → 6`, com custo total **6**. A rota `1 → 2 → 6` usa menos deslocamentos, mas custa **11**. A rota alternativa `1 → 3 → 4 → 5 → 6` também custa **6** e conclui o desafio.
+
 Para instalar a biblioteca gráfica e executar o protótipo no Windows:
 
 ```powershell
@@ -688,7 +695,7 @@ python main.py
 
 Na janela:
 
-- Alterne entre as fases com `F1` e `F2`; o progresso de cada uma é mantido
+- Alterne entre as fases com `F1`, `F2` e `F3`; o progresso de cada uma é mantido
   enquanto a janela estiver aberta.
 - Selecione um destino conectado clicando nele ou usando as teclas `1` a `6`.
 - Viaje com **VIAJAR** ou `Enter`.
@@ -697,6 +704,9 @@ Na janela:
 - Na fase 2, não é possível repetir andares; o andar 6 só pode ser visitado por
   último. Use **MOVER** ou `Enter` para avançar e **REINICIAR** ou `R` para
   começar a tentativa novamente.
+- Na fase 3, cada destino mostra o custo da aresta; o custo acumulado e o
+  mínimo calculado por Dijkstra aparecem no painel. Use **REINICIAR** ou `R`
+  para iniciar outra tentativa.
 - `Esc` fecha o jogo.
 
 Para executar os testes matemáticos e de progressão:
@@ -707,5 +717,5 @@ python -m unittest discover -s tests -v
 
 Os testes cobrem a estrutura do grafo, BFS e Dijkstra, conectividade,
 movimentação, exploração, coleta, saída bloqueada, conclusão da fase,
-possibilidade de vencer sem bônus e o desafio hamiltoniano da fase 2. A fase 3,
-Euler, pontuação e salvamento ainda não foram implementados.
+possibilidade de vencer sem bônus, o desafio hamiltoniano da fase 2 e o custo
+mínimo da fase 3. Euler, pontuação e salvamento ainda não foram implementados.
