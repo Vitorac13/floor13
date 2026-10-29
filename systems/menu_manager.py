@@ -12,6 +12,7 @@ class Screen(Enum):
     LEVEL_SELECT = "level_select"
     GAME = "game"
     RESULT = "result"
+    LEVEL_EDITOR = "level_editor"
 
 
 class MenuManager:
@@ -22,9 +23,18 @@ class MenuManager:
 
     def show_main_menu(self) -> None:
         self.screen = Screen.MAIN_MENU
+        self.active_level = None
+        self.result_level = None
 
     def show_level_select(self) -> None:
         self.screen = Screen.LEVEL_SELECT
+        self.active_level = None
+        self.result_level = None
+
+    def show_level_editor(self) -> None:
+        self.screen = Screen.LEVEL_EDITOR
+        self.active_level = None
+        self.result_level = None
 
     def continue_game(self, progress: ProgressManager) -> int | None:
         next_level = progress.recommended_level

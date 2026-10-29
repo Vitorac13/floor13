@@ -51,6 +51,16 @@ class ScoreManager:
         self._current_objectives.clear()
         self.current_attempt_score = 0
 
+    def cancel_attempt(self, attempt_id: str) -> bool:
+        """Descarta uma tentativa ativa sem registrar recompensas ou conclusao."""
+        if attempt_id != self._active_attempt_id:
+            return False
+        self._active_attempt_id = None
+        self._current_items.clear()
+        self._current_objectives.clear()
+        self.current_attempt_score = 0
+        return True
+
     def record_items(self, attempt_id: str, items: Iterable[Collectible]) -> None:
         self._ensure_active_attempt(attempt_id)
         for item in items:

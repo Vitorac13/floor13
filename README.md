@@ -899,3 +899,25 @@ sua validação e sua apresentação especializada quando necessário; registre 
 conclusão em `challenge_registry.py`. O restante da descoberta, menu, ordem e
 progressão continua automático. Configurações JSON não substituem algoritmos
 ou regras especializadas arbitrárias.
+
+## Editor visual de fases
+
+O menu principal oferece **Editor de fases**. No editor, use o mouse para
+adicionar, selecionar e arrastar andares; criar conexões selecionando seus dois
+extremos; e remover conexões ou o andar selecionado. As abas **Fase**, **Andar**,
+**Itens** e **Regras** permitem editar os dados do formato JSON já utilizado pelo
+jogo. Os parâmetros de desafio, requisitos e objetivos aceitam objetos/listas
+JSON para preservar as opções específicas de cada tipo de desafio.
+
+Use **Abrir** e informe o caminho de um arquivo JSON para importar uma fase.
+**Validar** e **Exportar** usam o mesmo carregador e as mesmas regras de
+validação do jogo; uma fase inválida não é exportada. **Salvar** atualiza o
+arquivo importado ou solicita um caminho para uma fase nova. Se o destino já
+existir, o editor pede confirmação antes de sobrescrevê-lo. As posições dos
+andares são apenas visuais e não são gravadas no JSON. O botão **Menu** retorna
+ao menu sem salvar alterações automaticamente.
+
+Durante uma partida, o botão **Menu** (ou a tecla `M`) abandona a tentativa sem
+registrar conclusão, pontuação ou progresso. Na tela de conclusão, as opções
+são **Próxima fase** (quando disponível), **Selecionar fases** e **Menu
+principal**.
