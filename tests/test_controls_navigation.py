@@ -82,6 +82,91 @@ class ControlsNavigationTests(unittest.TestCase):
 
         self.assertEqual(self.app.game.collected_keys, {"chave"})
 
+    def test_graph_hint_blocks_game_clicks_and_preserves_phase_state(self) -> None:
+        self._start_phase("phase-01")
+        self.app._select_floor(2)
+        game = self.app.game
+        before = (
+            self.app.current_floor,
+            self.app.selected_floor,
+            set(game.visited_floors),
+            set(game.collected_required),
+            set(game.collected_bonus),
+            game.movement_count,
+            self.app.attempt_movements,
+        )
+
+        self._post_click(self.app.hint_rect.center)
+        self.assertTrue(self.app.hint_open)
+        self._post_click(self.app.travel_rect.center)
+        self.app._draw()
+        self._post_click(self.app.hint_close_rect.center)
+
+        self.assertFalse(self.app.hint_open)
+        self.assertEqual(
+            (
+                self.app.current_floor,
+                self.app.selected_floor,
+                game.visited_floors,
+                game.collected_required,
+                game.collected_bonus,
+                game.movement_count,
+                self.app.attempt_movements,
+            ),
+            before,
+        )
+
+        self._post_click(self.app.hint_rect.center)
+        self._post_key(pygame.K_ESCAPE)
+        self.assertFalse(self.app.hint_open)
+        self.assertEqual(self.app.current_floor, before[0])
+
+    def test_graph_hint_renders_dynamic_sparse_weighted_graph(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            levels_dir = Path(directory)
+            phase = {
+                "id": "graph-hint",
+                "number": 1,
+                "name": "Grafo dinamico",
+                "graph": {
+                    "vertices": [2, 10, 20, 50, 90, 120],
+                    "edges": [
+                        [2, 10, 2.5],
+                        [10, 20, 4],
+                        [20, 50, 1],
+                        [50, 90, 3.75],
+                        [90, 120, 6],
+                        [120, 2, 8],
+                    ],
+                },
+                "start_floor": 2,
+                "exit_floor": 120,
+                "items": [],
+                "exit_requirements": {"keys": [], "challenges": []},
+                "challenge": {"type": "collect_and_exit"},
+                "optional_objectives": [],
+                "rewards": {"completion": 100},
+            }
+            (levels_dir / "graph-hint.json").write_text(
+                json.dumps(phase), encoding="utf-8"
+            )
+            app = ElevatorPrototype(
+                str(levels_dir.parent / "progress.json"), levels_dir
+            )
+            try:
+                app._start_phase("graph-hint")
+                app.hint_open = True
+                app._draw()
+
+                self.assertEqual(app.active_graph.vertices, (2, 10, 20, 50, 90, 120))
+                self.assertEqual(app.active_graph.edge_count, 6)
+                self.assertEqual(app.active_graph.weight(2, 10), 2.5)
+                self.assertEqual(app.active_graph.weight(50, 90), 3.75)
+                self.assertEqual(app.current_floor, 2)
+                self.assertEqual(app.active_state.visited_sequence, [2])
+            finally:
+                pygame.quit()
+
     def test_mouse_clicks_work_in_main_level_select_and_result_menus(self) -> None:
         self._post_click(self.app.main_select_rect.center)
         self.assertEqual(self.app.menu.screen, Screen.LEVEL_SELECT)

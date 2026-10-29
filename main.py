@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sys
 import time
+from math import cos, pi, sin
 from pathlib import Path
 from uuid import uuid4
 
@@ -114,6 +115,9 @@ class ElevatorPrototype:
         self.result_select_rect = pygame.Rect(480, 520, 210, 54)
         self.result_menu_rect = pygame.Rect(700, 520, 210, 54)
         self.game_menu_rect = pygame.Rect(786, 40, 110, 40)
+        self.hint_rect = pygame.Rect(650, 40, 120, 40)
+        self.hint_close_rect = pygame.Rect(405, 500, 150, 48)
+        self.hint_open = False
         self.quit_confirmation_open = False
         self.quit_confirm_rect = pygame.Rect(280, 345, 180, 52)
         self.quit_cancel_rect = pygame.Rect(500, 345, 180, 52)
@@ -162,6 +166,13 @@ class ElevatorPrototype:
             if self.menu.screen is Screen.LEVEL_EDITOR:
                 if self.level_editor.handle_event(event):
                     self._return_to_main_menu()
+                continue
+            if self.hint_open:
+                if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self.hint_open = False
+                elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                    if self.hint_close_rect.collidepoint(event.pos):
+                        self.hint_open = False
                 continue
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -264,6 +275,9 @@ class ElevatorPrototype:
                         self._return_to_main_menu()
                     continue
                 if self.menu.screen is not Screen.GAME:
+                    continue
+                if self.hint_rect.collidepoint(event.pos):
+                    self.hint_open = True
                     continue
                 if self.game_menu_rect.collidepoint(event.pos):
                     self._return_to_main_menu()
@@ -378,6 +392,7 @@ class ElevatorPrototype:
         self.level = level
         self.active_level_id = level.identifier
         self.active_phase = level.number
+        self.hint_open = False
         self.active_state = ChallengeRegistry.create_state(level)
         challenge_type = level.challenge_type
         self.game = (
@@ -454,6 +469,7 @@ class ElevatorPrototype:
         self.final_game = None
         self.active_phase = None
         self.active_level_id = None
+        self.hint_open = False
         self.item_progress = None
         self.attempt_result = None
         self.selected_floor = None
@@ -910,6 +926,8 @@ class ElevatorPrototype:
             self._draw_floor_panel()
             self._draw_destination_panel()
             self._draw_footer()
+            if self.hint_open:
+                self._draw_graph_hint()
         if self.quit_confirmation_open:
             self._draw_quit_confirmation()
         viewport, _ = self._content_viewport()
@@ -1232,7 +1250,126 @@ class ElevatorPrototype:
         )
         menu_label = self.small_font.render("MENU", True, TEXT)
         self.screen.blit(menu_label, menu_label.get_rect(center=self.game_menu_rect.center))
+        pygame.draw.rect(self.screen, PANEL, self.hint_rect, border_radius=8)
+        pygame.draw.rect(
+            self.screen, ACCENT_DARK, self.hint_rect, width=2, border_radius=8
+        )
+        bulb_center = (self.hint_rect.x + 19, self.hint_rect.centery - 2)
+        pygame.draw.circle(self.screen, WARNING, bulb_center, 7, width=2)
+        pygame.draw.line(
+            self.screen,
+            WARNING,
+            (bulb_center[0] - 3, bulb_center[1] + 7),
+            (bulb_center[0] + 3, bulb_center[1] + 7),
+            2,
+        )
+        pygame.draw.line(
+            self.screen,
+            WARNING,
+            (bulb_center[0] - 2, bulb_center[1] + 10),
+            (bulb_center[0] + 2, bulb_center[1] + 10),
+            2,
+        )
+        hint_label = self.small_font.render("Dica", True, TEXT)
+        self.screen.blit(
+            hint_label,
+            hint_label.get_rect(midleft=(self.hint_rect.x + 34, self.hint_rect.centery)),
+        )
         pygame.draw.line(self.screen, PANEL_LIGHT, (64, 126), (896, 126), 2)
+
+    def _draw_graph_hint(self) -> None:
+        if self.level is None:
+            return
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 190))
+        self.screen.blit(overlay, (0, 0))
+
+        dialog = pygame.Rect(75, 65, 810, 510)
+        pygame.draw.rect(self.screen, PANEL, dialog, border_radius=18)
+        pygame.draw.rect(self.screen, ACCENT, dialog, width=2, border_radius=18)
+        self._text("DICA — GRAFO DA FASE", self.heading_font, TEXT, (110, 88))
+        self._text(
+            f"{len(self.active_graph.vertices)} vertices  •  "
+            f"{self.active_graph.edge_count} arestas",
+            self.small_font,
+            MUTED,
+            (112, 121),
+        )
+
+        graph_area = pygame.Rect(130, 155, 700, 320)
+        vertices = self.active_graph.vertices
+        positions: dict[int, tuple[int, int]] = {}
+        count = len(vertices)
+        if count == 1:
+            positions[vertices[0]] = graph_area.center
+        else:
+            radius_x = graph_area.width * 0.43
+            radius_y = graph_area.height * 0.40
+            for index, vertex in enumerate(vertices):
+                angle = -pi / 2 + 2 * pi * index / count
+                positions[vertex] = (
+                    round(graph_area.centerx + radius_x * cos(angle)),
+                    round(graph_area.centery + radius_y * sin(angle)),
+                )
+
+        vertex_indexes = {vertex: index for index, vertex in enumerate(vertices)}
+        node_radius = max(
+            3,
+            min(23, round(min(graph_area.width, graph_area.height) * 0.40 / count)),
+        )
+        label_font = pygame.font.Font(
+            None, max(12, min(22, round(node_radius * 1.35)))
+        )
+        weight_font = pygame.font.Font(None, 18)
+        for first in vertices:
+            for second, weight in self.active_graph.neighbors(first):
+                if vertex_indexes[first] > vertex_indexes[second]:
+                    continue
+                start = positions[first]
+                end = positions[second]
+                if first == second:
+                    loop = pygame.Rect(
+                        start[0] - node_radius,
+                        start[1] - node_radius * 2,
+                        node_radius * 2,
+                        node_radius * 2,
+                    )
+                    pygame.draw.arc(self.screen, MUTED, loop, 0, 2 * pi, 2)
+                    label_position = (start[0], start[1] - node_radius * 2 - 8)
+                else:
+                    pygame.draw.line(self.screen, MUTED, start, end, 2)
+                    midpoint = ((start[0] + end[0]) // 2, (start[1] + end[1]) // 2)
+                    dx = end[0] - start[0]
+                    dy = end[1] - start[1]
+                    length = max(1, (dx * dx + dy * dy) ** 0.5)
+                    label_position = (
+                        round(midpoint[0] - dy / length * 10),
+                        round(midpoint[1] + dx / length * 10),
+                    )
+                weight_label = weight_font.render(f"{weight:g}", True, WARNING)
+                weight_rect = weight_label.get_rect(center=label_position)
+                pygame.draw.rect(
+                    self.screen, PANEL, weight_rect.inflate(6, 4), border_radius=4
+                )
+                self.screen.blit(weight_label, weight_rect)
+
+        for vertex in vertices:
+            position = positions[vertex]
+            pygame.draw.circle(self.screen, ACCENT_DARK, position, node_radius)
+            pygame.draw.circle(self.screen, ACCENT, position, node_radius, width=2)
+            vertex_label = label_font.render(str(vertex), True, TEXT)
+            self.screen.blit(vertex_label, vertex_label.get_rect(center=position))
+
+        pygame.draw.rect(
+            self.screen, PANEL_LIGHT, self.hint_close_rect, border_radius=9
+        )
+        pygame.draw.rect(
+            self.screen, ACCENT_DARK, self.hint_close_rect, width=2, border_radius=9
+        )
+        close_label = self.body_font.render("Fechar", True, TEXT)
+        self.screen.blit(
+            close_label, close_label.get_rect(center=self.hint_close_rect.center)
+        )
 
     def _draw_floor_panel(self) -> None:
         if self.level is None:
