@@ -7,6 +7,7 @@ from math import isclose
 
 from algorithms import dijkstra, is_connected
 from graph import Graph
+from level_manager import LevelManager
 
 
 @dataclass(frozen=True)
@@ -24,30 +25,24 @@ class FinalChallenge:
 class FinalChallengeManager:
     @staticmethod
     def create_the_exit() -> FinalChallenge:
-        graph = Graph(range(1, 7))
-        for first, second, cost in (
-            (1, 2, 2),
-            (2, 6, 2),
-            (1, 3, 1),
-            (3, 4, 1),
-            (4, 6, 2),
-            (1, 5, 3),
-            (5, 6, 4),
-            (2, 4, 2),
-        ):
-            graph.add_edge(first, second, cost)
+        level = LevelManager.load_level("phase-05")
+        challenge_config = LevelManager.load_phase_config("phase-05").get(
+            "challenge", {}
+        )
+        destination = challenge_config.get("destination_floor", level.exit_floor)
+        return_floor = challenge_config.get("return_floor", level.start_floor)
 
-        outbound = dijkstra(graph, 1, 6)
-        returning = dijkstra(graph, 6, 1)
+        outbound = dijkstra(level.graph, level.start_floor, destination)
+        returning = dijkstra(level.graph, destination, return_floor)
         if outbound is None or returning is None:
             raise ValueError("A fase final precisa permitir ida e retorno.")
 
         challenge = FinalChallenge(
-            name="A saída",
-            graph=graph,
-            start_floor=1,
-            destination_floor=6,
-            return_floor=1,
+            name=level.name,
+            graph=level.graph,
+            start_floor=level.start_floor,
+            destination_floor=destination,
+            return_floor=return_floor,
             minimum_outbound_cost=outbound[0],
             minimum_return_cost=returning[0],
             minimum_total_cost=outbound[0] + returning[0],

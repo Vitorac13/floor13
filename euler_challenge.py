@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from algorithms import is_connected
 from graph import Graph
+from level_manager import LevelManager
 
 Edge = tuple[int, int]
 
@@ -28,31 +29,25 @@ class EulerChallenge:
 class EulerChallengeManager:
     @staticmethod
     def create_full_inspection() -> EulerChallenge:
-        graph = Graph(range(1, 6))
-        for first, second in (
-            (1, 2),
-            (2, 3),
-            (3, 1),
-            (1, 4),
-            (4, 5),
-            (5, 2),
-            (2, 4),
-        ):
-            graph.add_edge(first, second)
+        config = LevelManager.load_phase_config("phase-04")
+        level = LevelManager.load_level("phase-04")
+        challenge_config = config.get("challenge", {})
 
         required_edges = tuple(
             edge_key(first, second)
-            for first in graph.vertices
-            for second, _ in graph.neighbors(first)
+            for first in level.graph.vertices
+            for second, _ in level.graph.neighbors(first)
             if first < second
         )
         challenge = EulerChallenge(
-            name="Inspeção completa",
-            graph=graph,
-            start_floor=1,
-            end_floor=4,
+            name=level.name,
+            graph=level.graph,
+            start_floor=level.start_floor,
+            end_floor=level.exit_floor,
             required_edges=required_edges,
-            reference_trail=(1, 2, 3, 1, 4, 5, 2, 4),
+            reference_trail=tuple(
+                challenge_config.get("reference_trail", ())
+            ),
         )
         EulerChallengeManager.validate(challenge)
         return challenge

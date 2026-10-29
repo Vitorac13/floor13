@@ -1,0 +1,23 @@
+{
+  "id": "phase-01",
+  "number": 1,
+  "name": "Primeiro contato",
+  "graph": {
+    "vertices": [1, 2, 3, 4, 5, 6],
+    "edges": [[1, 2], [2, 3], [3, 4], [4, 6], [2, 5], [5, 6]]
+  },
+  "start_floor": 1,
+  "exit_floor": 6,
+  "items": [
+    {"id": "chave", "name": "Chave antiga", "floor": 2, "type": "essential", "key": true, "score": 100},
+    {"id": "fusivel", "name": "Fusivel", "floor": 3, "type": "essential", "score": 100},
+    {"id": "cartao", "name": "Cartao de acesso", "floor": 4, "type": "essential", "score": 100},
+    {"id": "foto", "name": "Fotografia", "floor": 5, "type": "bonus", "score": 200}
+  ],
+  "exit_requirements": {"keys": ["chave"], "challenges": []},
+  "challenge": {"type": "collect_and_exit"},
+  "optional_objectives": [
+    {"id": "return-to-lobby", "name": "Retorno pelo elevador", "description": "Volte ao andar inicial de grau 1 depois de explorar o predio.", "type": "return_to_start", "reward": 200}
+  ],
+  "rewards": {"completion": 300}
+}

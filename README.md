@@ -8,6 +8,11 @@
 **Escopo inicial:** Protótipo funcional com 5 fases  
 **Objetivo acadêmico:** Aplicação prática de conceitos e algoritmos de teoria dos grafos estudados em Matemática Discreta II.
 
+> As seções 1 a 15 preservam a especificação de produto original, incluindo
+> metas ainda não implementadas literalmente (como seis itens em toda fase).
+> Para o comportamento disponível nesta versão, consulte “Implementação atual”
+> e os arquivos `levels/phase-01.json` a `levels/phase-05.json`.
+
 ---
 
 # 1. VISÃO GERAL DO PROJETO
@@ -722,34 +727,52 @@ python main.py
 
 Na janela:
 
-- Alterne entre as fases com `F1` a `F5`; o progresso de cada uma é mantido
-  enquanto a janela estiver aberta.
-- Selecione um destino conectado clicando nele ou usando as teclas `1` a `6`.
-- Viaje com **VIAJAR** ou `Enter`.
-- Colete itens disponíveis no andar com **COLETAR** ou `E`. Os bônus são
-  opcionais.
-- Na fase 2, não é possível repetir andares; o andar 6 só pode ser visitado por
-  último. Use **MOVER** ou `Enter` para avançar e **REINICIAR** ou `R` para
-  começar a tentativa novamente.
-- Na fase 3, cada destino mostra o custo da aresta; o custo acumulado e o
-  mínimo calculado por Dijkstra aparecem no painel. Use **REINICIAR** ou `R`
-  para iniciar outra tentativa.
-- Na fase 4, cada conexão usada é marcada e não pode ser atravessada de novo;
-  revisitar andares continua permitido. Use **REINICIAR** ou `R` para recomeçar.
-- Na fase 5, alcance a saída e volte ao início com o menor custo total.
-  Os custos de ida, retorno e percurso são mostrados durante a tentativa; o
-  custo mínimo de referência aparece ao final. Use **REINICIAR** ou `R` para
-  recomeçar.
-- `Esc` fecha o jogo.
+- **Jogar/Continuar** inicia a primeira fase ainda não concluída. **Selecionar
+  fases** permite iniciar qualquer fase desbloqueada, inclusive rejogá-la.
+- Selecione um destino conectado clicando nele ou usando as teclas `1` a `6`;
+  viaje com `Enter`.
+- Colete itens com **COLETAR** ou `E`. A fase 1 exige os três itens essenciais
+  e a chave da saída; os bônus são opcionais.
+- Nas fases 2 a 5, `R` reinicia a tentativa. Os desafios hamiltoniano,
+  econômico, euleriano e de ida e retorno mantêm suas regras próprias.
+- Após vencer, a tela de resultado mostra pontuação, itens, objetivos,
+  deslocamentos e a próxima fase desbloqueada. `Esc` fecha o jogo.
 
-Para executar os testes matemáticos e de progressão:
+## Arquitetura e configuração das fases
+
+- `levels/phase-01.json` a `phase-05.json` são a fonte dos grafos, itens,
+  requisitos, objetivos e recompensas. `LevelManager` valida os dados antes de
+  criar as estruturas em `level.py`; erros indicam a fase e o campo inválido.
+- Chaves podem ser exigidas pela saída ou por uma conexão não direcionada.
+  Configurações de conexão bloqueada são validadas quanto à existência da aresta
+  e à possibilidade de obter a chave; o estado também informa o bloqueio sem
+  contabilizar um deslocamento inválido.
+- `graph.py` e `algorithms.py` mantêm as estruturas e algoritmos centrais.
+  `hamilton_challenge.py`, `economic_challenge.py`, `euler_challenge.py` e
+  `final_challenge.py` carregam seus grafos do JSON e continuam aplicando as
+  validações matemáticas específicas. As regras dos estados de jogo existentes
+  não foram substituídas por uma condição genérica.
+- `systems/progress_manager.py` controla bloqueios e recomendação; `score_manager.py`
+  calcula recompensas idempotentes; `save_manager.py` grava resultados de modo
+  atômico em `data/progress.json`, mantendo a melhor pontuação de cada fase;
+  `menu_manager.py` modela a navegação entre telas.
+- A configuração original dos cinco grafos foi mantida. A fase 1 já contém um
+  vértice de grau 1 (andar inicial); como as arestas são não direcionadas, o
+  jogador pode retornar pelo mesmo elevador. Os deslocamentos de ida e volta
+  são contados, e o retorno concede o objetivo opcional configurado.
+- As pontuações base e os objetivos são configuráveis por fase. Rejogadas não
+  somam tentativas: o total do jogador é a soma da melhor pontuação por fase.
+  Resultados recentes e melhores ficam registrados separadamente.
+
+Para executar os testes:
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
 Os testes cobrem a estrutura do grafo, BFS e Dijkstra, conectividade,
-movimentação, exploração, coleta, saída bloqueada, conclusão da fase,
-possibilidade de vencer sem bônus e os desafios hamiltoniano, econômico,
-euleriano e de ida e retorno das fases 2 a 5. Pontuação e salvamento ainda não
-foram implementados.
+carregamento e validação dos cinco JSONs, movimento de ida e volta, itens e
+chaves, saída bloqueada, pontuação sem duplicidade, progressão, salvamento,
+recuperação de dados inválidos, navegação e o fluxo Pygame de fase, resultado
+e desbloqueio. As regras anteriores dos cinco desafios também permanecem
+cobertas.

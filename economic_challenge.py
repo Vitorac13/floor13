@@ -7,6 +7,7 @@ from math import isclose
 
 from algorithms import dijkstra
 from graph import Graph
+from level_manager import LevelManager
 
 
 @dataclass(frozen=True)
@@ -22,29 +23,20 @@ class EconomicChallenge:
 class EconomicChallengeManager:
     @staticmethod
     def create_economic_elevator() -> EconomicChallenge:
-        graph = Graph(range(1, 7))
-        for first, second, cost in (
-            (1, 2, 1),
-            (2, 6, 10),
-            (1, 3, 2),
-            (3, 4, 2),
-            (4, 5, 1),
-            (5, 6, 1),
-            (3, 5, 3),
-            (1, 4, 5),
-            (4, 6, 4),
-        ):
-            graph.add_edge(first, second, cost)
-
-        solution = dijkstra(graph, 1, 6)
+        level = LevelManager.load_level("phase-03")
+        challenge_config = LevelManager.load_phase_config("phase-03").get(
+            "challenge", {}
+        )
+        destination = challenge_config.get("destination_floor", level.exit_floor)
+        solution = dijkstra(level.graph, level.start_floor, destination)
         if solution is None:
             raise ValueError("A fase economica nao possui rota ate o destino.")
         optimal_cost, route = solution
         challenge = EconomicChallenge(
-            name="Elevador econômico",
-            graph=graph,
-            start_floor=1,
-            destination_floor=6,
+            name=level.name,
+            graph=level.graph,
+            start_floor=level.start_floor,
+            destination_floor=destination,
             optimal_cost=optimal_cost,
             optimal_route=tuple(route),
         )

@@ -1,0 +1,20 @@
+{
+  "id": "phase-05",
+  "number": 5,
+  "name": "A saída",
+  "graph": {
+    "vertices": [1, 2, 3, 4, 5, 6],
+    "edges": [[1, 2, 2], [2, 6, 2], [1, 3, 1], [3, 4, 1], [4, 6, 2], [1, 5, 3], [5, 6, 4], [2, 4, 2]]
+  },
+  "start_floor": 1,
+  "exit_floor": 6,
+  "items": [
+    {"id": "bilhete", "name": "Bilhete rasgado", "floor": 2, "type": "bonus", "score": 200}
+  ],
+  "exit_requirements": {"keys": [], "challenges": ["minimum_round_trip"]},
+  "challenge": {"type": "final", "destination_floor": 6, "return_floor": 1},
+  "optional_objectives": [
+    {"id": "explore-floor-2", "name": "Cabine auxiliar", "description": "Explore o andar 02 durante a jornada.", "type": "visit_floor", "floor": 2, "reward": 200}
+  ],
+  "rewards": {"completion": 300}
+}

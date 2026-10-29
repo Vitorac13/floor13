@@ -1,0 +1,20 @@
+{
+  "id": "phase-02",
+  "number": 2,
+  "name": "Sem voltar atrás",
+  "graph": {
+    "vertices": [1, 2, 3, 4, 5, 6],
+    "edges": [[1, 2], [1, 3], [2, 3], [2, 4], [3, 4], [3, 5], [4, 5], [4, 6], [5, 6]]
+  },
+  "start_floor": 1,
+  "exit_floor": 6,
+  "items": [
+    {"id": "mapa-amassado", "name": "Mapa amassado", "floor": 3, "type": "bonus", "score": 200}
+  ],
+  "exit_requirements": {"keys": [], "challenges": ["hamilton"]},
+  "challenge": {"type": "hamilton", "end_floor": 6},
+  "optional_objectives": [
+    {"id": "find-map", "name": "Mapa da manutencao", "description": "Encontre o item opcional escondido.", "type": "collect_all_bonus", "reward": 200}
+  ],
+  "rewards": {"completion": 300}
+}

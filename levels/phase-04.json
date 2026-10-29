@@ -1,0 +1,20 @@
+{
+  "id": "phase-04",
+  "number": 4,
+  "name": "Inspeção completa",
+  "graph": {
+    "vertices": [1, 2, 3, 4, 5],
+    "edges": [[1, 2], [2, 3], [3, 1], [1, 4], [4, 5], [5, 2], [2, 4]]
+  },
+  "start_floor": 1,
+  "exit_floor": 4,
+  "items": [
+    {"id": "chaveiro", "name": "Chaveiro de manutencao", "floor": 5, "type": "bonus", "score": 200}
+  ],
+  "exit_requirements": {"keys": [], "challenges": ["euler_trail"]},
+  "challenge": {"type": "euler", "reference_trail": [1, 2, 3, 1, 4, 5, 2, 4]},
+  "optional_objectives": [
+    {"id": "find-keyring", "name": "Achados e perdidos", "description": "Encontre o item opcional escondido.", "type": "collect_all_bonus", "reward": 200}
+  ],
+  "rewards": {"completion": 300}
+}

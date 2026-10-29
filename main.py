@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import sys
+import time
+from uuid import uuid4
 
 import pygame
 
@@ -16,8 +18,13 @@ from game_state import GameState
 from hamilton_challenge import HamiltonChallengeManager
 from hamilton_game_state import HamiltonGameState
 from graph import Graph
-from level import ItemKind
+from level import ItemKind, OptionalObjective
 from level_manager import LevelManager
+from systems.item_manager import ItemProgress
+from systems.menu_manager import MenuManager, Screen
+from systems.progress_manager import ProgressManager
+from systems.save_manager import SaveError, SaveManager
+from systems.score_manager import AttemptResult, ScoreManager
 
 WIDTH = 960
 HEIGHT = 640
@@ -32,9 +39,13 @@ WARNING = (244, 190, 105)
 
 
 class ElevatorPrototype:
-    def __init__(self) -> None:
+    def __init__(self, save_path: str | None = None) -> None:
         pygame.init()
-        self.level = LevelManager.create_first_contact()
+        self.phase_levels = tuple(
+            LevelManager.load_level(f"phase-0{number}")
+            for number in range(1, 6)
+        )
+        self.level = self.phase_levels[0]
         self.game = GameState(self.level)
         self.hamilton_challenge = HamiltonChallengeManager.create_no_turning_back()
         self.hamilton_game = HamiltonGameState(self.hamilton_challenge)
@@ -45,6 +56,17 @@ class ElevatorPrototype:
         self.final_challenge = FinalChallengeManager.create_the_exit()
         self.final_game = FinalGameState(self.final_challenge)
         self.active_phase = 1
+        self.save_manager = SaveManager(save_path)
+        self.saved_progress = self.save_manager.load()
+        self.progress_manager = ProgressManager()
+        self.progress_manager.restore(self.saved_progress)
+        self.score_manager = ScoreManager()
+        self.menu = MenuManager()
+        self.item_progress = ItemProgress(self.level)
+        self.attempt_result: AttemptResult | None = None
+        self.attempt_id = str(uuid4())
+        self.attempt_started_at = time.monotonic()
+        self.attempt_movements = 0
         pygame.display.set_caption("Floor 13")
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
         self.clock = pygame.time.Clock()
@@ -58,6 +80,14 @@ class ElevatorPrototype:
         self.destination_rects: dict[int, pygame.Rect] = {}
         self.collect_rect = pygame.Rect(600, 444, 270, 54)
         self.travel_rect = pygame.Rect(600, 510, 270, 58)
+        self.main_continue_rect = pygame.Rect(330, 260, 300, 58)
+        self.main_select_rect = pygame.Rect(330, 335, 300, 58)
+        self.main_exit_rect = pygame.Rect(330, 410, 300, 58)
+        self.level_rects: dict[int, pygame.Rect] = {}
+        self.level_back_rect = pygame.Rect(64, 548, 190, 48)
+        self.result_continue_rect = pygame.Rect(110, 520, 230, 54)
+        self.result_replay_rect = pygame.Rect(365, 520, 230, 54)
+        self.result_select_rect = pygame.Rect(620, 520, 230, 54)
 
     @property
     def current_floor(self) -> int:
@@ -98,16 +128,27 @@ class ElevatorPrototype:
                 if event.key == pygame.K_ESCAPE:
                     pygame.quit()
                     sys.exit()
-                if event.key == pygame.K_F1:
-                    self._switch_phase(1)
-                if event.key == pygame.K_F2:
-                    self._switch_phase(2)
-                if event.key == pygame.K_F3:
-                    self._switch_phase(3)
-                if event.key == pygame.K_F4:
-                    self._switch_phase(4)
-                if event.key == pygame.K_F5:
-                    self._switch_phase(5)
+                if self.menu.screen is Screen.MAIN_MENU:
+                    if event.key == pygame.K_RETURN:
+                        self._continue_game()
+                    elif event.key == pygame.K_s:
+                        self.menu.show_level_select()
+                    continue
+                if self.menu.screen is Screen.LEVEL_SELECT:
+                    if event.key == pygame.K_BACKSPACE:
+                        self.menu.show_main_menu()
+                    elif pygame.K_1 <= event.key <= pygame.K_5:
+                        self._start_phase(event.key - pygame.K_0)
+                    continue
+                if self.menu.screen is Screen.RESULT:
+                    if event.key == pygame.K_RETURN:
+                        self._continue_after_result()
+                    elif event.key == pygame.K_r:
+                        self._replay_result()
+                    elif event.key == pygame.K_s:
+                        self.menu.show_level_select()
+                    continue
+
                 if event.key == pygame.K_r:
                     if self.active_phase == 2:
                         self._restart_hamilton_attempt()
@@ -117,24 +158,41 @@ class ElevatorPrototype:
                         self._restart_euler_attempt()
                     elif self.active_phase == 5:
                         self._restart_final_attempt()
-                if event.key == pygame.K_RETURN:
+                elif event.key == pygame.K_RETURN:
                     self._travel()
-                if event.key == pygame.K_e and self.active_phase == 1:
+                elif event.key == pygame.K_e:
                     self._collect_items()
-                if pygame.K_1 <= event.key <= pygame.K_6:
+                elif pygame.K_1 <= event.key <= pygame.K_6:
                     self._select_floor(event.key - pygame.K_0)
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                if self.menu.screen is Screen.MAIN_MENU:
+                    if self.main_continue_rect.collidepoint(event.pos):
+                        self._continue_game()
+                    elif self.main_select_rect.collidepoint(event.pos):
+                        self.menu.show_level_select()
+                    elif self.main_exit_rect.collidepoint(event.pos):
+                        pygame.quit()
+                        sys.exit()
+                    continue
+                if self.menu.screen is Screen.LEVEL_SELECT:
+                    if self.level_back_rect.collidepoint(event.pos):
+                        self.menu.show_main_menu()
+                        continue
+                    for phase, rect in self.level_rects.items():
+                        if rect.collidepoint(event.pos):
+                            self._start_phase(phase)
+                            break
+                    continue
+                if self.menu.screen is Screen.RESULT:
+                    if self.result_continue_rect.collidepoint(event.pos):
+                        self._continue_after_result()
+                    elif self.result_replay_rect.collidepoint(event.pos):
+                        self._replay_result()
+                    elif self.result_select_rect.collidepoint(event.pos):
+                        self.menu.show_level_select()
+                    continue
                 if self.collect_rect.collidepoint(event.pos):
-                    if self.active_phase == 1:
-                        self._collect_items()
-                    elif self.active_phase == 2:
-                        self._restart_hamilton_attempt()
-                    elif self.active_phase == 3:
-                        self._restart_economic_attempt()
-                    elif self.active_phase == 4:
-                        self._restart_euler_attempt()
-                    else:
-                        self._restart_final_attempt()
+                    self._collect_items()
                     continue
                 if self.travel_rect.collidepoint(event.pos):
                     self._travel()
@@ -144,7 +202,145 @@ class ElevatorPrototype:
                         self._select_floor(floor)
                         break
 
+    def _continue_game(self) -> None:
+        recommended = self.progress_manager.recommended_level
+        if recommended is None:
+            self.menu.show_level_select()
+            self.message = (
+                "Todo o conteudo disponivel foi concluido. "
+                "Escolha uma fase para rejogar."
+            )
+            return
+        self._start_phase(recommended)
+
+    def _start_phase(self, phase: int) -> None:
+        if not self.menu.start_level(phase, self.progress_manager):
+            self.message = f"A fase {phase} esta bloqueada."
+            return
+        self.active_phase = phase
+        self.level = self.phase_levels[0]
+        if phase == 1:
+            self.game = GameState(self.level)
+        elif phase == 2:
+            self.hamilton_game.reset()
+        elif phase == 3:
+            self.economic_game.reset()
+        elif phase == 4:
+            self.euler_game.reset()
+        else:
+            self.final_game.reset()
+        self.item_progress = ItemProgress(self.phase_levels[phase - 1])
+        self.attempt_result = None
+        self.attempt_id = str(uuid4())
+        self.score_manager.begin_attempt(self.attempt_id)
+        self.attempt_started_at = time.monotonic()
+        self.attempt_movements = 0
+        self.selected_floor = None
+        self.message = f"Fase ativa: {self.phase_levels[phase - 1].name}."
+        if phase == 3:
+            self.message += (
+                f" Custo minimo: {self.economic_game.optimal_cost:g}."
+            )
+        elif phase == 5:
+            self.message += " Alcance a saida e retorne ao inicio."
+
+    def _continue_after_result(self) -> None:
+        recommended = self.progress_manager.recommended_level
+        if recommended is None:
+            self.menu.show_level_select()
+            self.message = (
+                "Todo o conteudo disponivel foi concluido. "
+                "Escolha uma fase para rejogar."
+            )
+            return
+        self._start_phase(recommended)
+
+    def _replay_result(self) -> None:
+        if self.menu.result_level is not None:
+            self._start_phase(self.menu.result_level)
+
+    def _current_objectives(self) -> tuple[OptionalObjective, ...]:
+        level = self.phase_levels[self.active_phase - 1]
+        if self.active_phase == 1:
+            visited_floors = self.game.visited_floors
+            collected_bonus = self.game.collected_bonus
+            returned_to_start = self.game.returned_to_start
+        else:
+            visited_floors = self.item_progress.visited_floors
+            collected_bonus = self.item_progress.collected_bonus
+            returned_to_start = self.item_progress.returned_to_start
+        return tuple(
+            objective
+            for objective in level.optional_objectives
+            if (
+                objective.kind == "visit_floor"
+                and objective.floor in visited_floors
+            )
+            or (
+                objective.kind == "collect_all_bonus"
+                and {
+                    item.identifier
+                    for item in level.items
+                    if item.kind is ItemKind.BONUS
+                }.issubset(collected_bonus)
+            )
+            or (
+                objective.kind == "return_to_start"
+                and returned_to_start
+            )
+        )
+
+    def _sync_objective_score(self) -> None:
+        self.score_manager.record_objectives(
+            self.attempt_id, self._current_objectives()
+        )
+
+    def _complete_phase(self) -> None:
+        if self.attempt_result is not None:
+            return
+        level = self.phase_levels[self.active_phase - 1]
+        if self.active_phase == 1:
+            collected_ids = self.game.collected_required | self.game.collected_bonus
+        else:
+            collected_ids = self.item_progress.collected_item_ids
+        collected_items = tuple(
+            item for item in level.items if item.identifier in collected_ids
+        )
+        completed_objectives = self._current_objectives()
+        self.score_manager.record_items(self.attempt_id, collected_items)
+        self.score_manager.record_objectives(
+            self.attempt_id, completed_objectives
+        )
+        challenge_ids = level.required_challenges or ("collect_and_exit",)
+        self.attempt_result = self.score_manager.finalize_attempt(
+            self.attempt_id,
+            self.active_phase,
+            items=collected_items,
+            objectives=completed_objectives,
+            completed_challenges=challenge_ids,
+            movements=self.attempt_movements,
+            elapsed_seconds=time.monotonic() - self.attempt_started_at,
+            completion_score=level.completion_score,
+        )
+        self.progress_manager.complete_level(self.active_phase)
+        persisted = self.progress_manager.to_dict()
+        self.saved_progress.update(persisted)
+        try:
+            self.saved_progress = self.save_manager.record_result(
+                self.saved_progress,
+                self.active_phase,
+                self.attempt_result.to_dict(),
+            )
+        except SaveError as error:
+            self.message = f"Fase concluida, mas o progresso nao foi salvo: {error}"
+        self.menu.show_result(self.active_phase)
+
     def _select_floor(self, floor: int) -> None:
+        missing_keys = self._missing_connection_keys(floor)
+        if missing_keys:
+            self.selected_floor = None
+            self.message = f"Elevador bloqueado. Falta a chave: {', '.join(missing_keys)}."
+            return
         if self.active_phase == 1:
             if self.game.is_complete:
                 return
@@ -264,6 +460,12 @@ class ElevatorPrototype:
         if self.selected_floor is None:
             self.message = "Selecione primeiro um dos destinos disponiveis."
             return
+        missing_keys = self._missing_connection_keys(self.selected_floor)
+        if missing_keys:
+            self.selected_floor = None
+            self.message = f"Elevador bloqueado. Falta a chave: {', '.join(missing_keys)}."
+            return
+        previous_move_count = self._successful_move_count()
         if self.active_phase == 1:
             self.message = self.game.move_to(self.selected_floor)
         elif self.active_phase == 2:
@@ -275,16 +477,77 @@ class ElevatorPrototype:
         else:
             self.message = self.final_game.move_to(self.selected_floor)
         self.selected_floor = None
+        current_move_count = self._successful_move_count()
+        if current_move_count > previous_move_count:
+            self.attempt_movements += 1
+            if self.active_phase != 1:
+                self.item_progress.record_movement(self.current_floor)
+            self._sync_objective_score()
+            discovered = (
+                self.game.items_on_current_floor
+                if self.active_phase == 1
+                else self.item_progress.items_on_floor(self.current_floor)
+            )
+            if discovered:
+                names = ", ".join(item.name for item in discovered)
+                self.message += f" Item encontrado: {names}. Pressione E para coletar."
+        if (
+            self.active_phase == 1 and self.game.is_complete
+            or self.active_phase == 2 and self.hamilton_game.is_complete
+            or self.active_phase == 3 and self.economic_game.is_complete
+            or self.active_phase == 4 and self.euler_game.is_complete
+            or self.active_phase == 5 and self.final_game.is_complete
+        ):
+            self._complete_phase()
+
+    def _successful_move_count(self) -> int:
+        if self.active_phase == 1:
+            return self.game.movement_count
+        game = {
+            2: self.hamilton_game,
+            3: self.economic_game,
+            4: self.euler_game,
+            5: self.final_game,
+        }[self.active_phase]
+        return len(game.visited_sequence)
+
+    def _missing_connection_keys(self, destination: int) -> tuple[str, ...]:
+        level = self.phase_levels[self.active_phase - 1]
+        collected_keys = (
+            self.game.collected_keys
+            if self.active_phase == 1
+            else self.item_progress.collected_keys
+        )
+        required_ids = {
+            key_id
+            for requirement in level.connection_requirements
+            if {requirement.first_floor, requirement.second_floor}
+            == {self.current_floor, destination}
+            for key_id in requirement.key_ids
+        }
+        return tuple(
+            item.name
+            for item in level.items
+            if item.identifier in required_ids
+            and item.identifier not in collected_keys
+        )
 
     def _collect_items(self) -> None:
-        if self.game.is_complete:
+        if self.menu.screen is not Screen.GAME:
             return
-        items = self.game.collect_items_here()
+        if self.active_phase == 1:
+            items = self.game.collect_items_here()
+        else:
+            items = self.item_progress.collect(self.current_floor)
         if not items:
             self.message = "Nao ha itens para coletar neste andar."
             return
+        self.score_manager.record_items(self.attempt_id, items)
+        self._sync_objective_score()
         names = ", ".join(item.name for item in items)
-        if all(item.kind is ItemKind.REQUIRED for item in items):
+        if any(item.is_key for item in items):
+            self.message = f"Chave coletada: {names}."
+        elif all(item.kind is ItemKind.REQUIRED for item in items):
             self.message = f"Item obrigatorio coletado: {names}."
         elif all(item.kind is ItemKind.BONUS for item in items):
             self.message = f"Bonus coletado: {names}."
@@ -292,35 +555,25 @@ class ElevatorPrototype:
             self.message = f"Itens coletados: {names}."
 
     def _switch_phase(self, phase: int) -> None:
-        if phase not in (1, 2, 3, 4, 5):
-            return
-        self.active_phase = phase
+        self._start_phase(phase)
+
+    def _reset_attempt_tracking(self) -> None:
+        self.item_progress = ItemProgress(self.phase_levels[self.active_phase - 1])
+        self.attempt_id = str(uuid4())
+        self.score_manager.begin_attempt(self.attempt_id)
+        self.attempt_started_at = time.monotonic()
+        self.attempt_movements = 0
+        self.attempt_result = None
         self.selected_floor = None
-        if phase == 1:
-            self.message = f"Fase ativa: {self.level.name}."
-        elif phase == 2:
-            self.message = f"Fase ativa: {self.hamilton_challenge.name}."
-        elif phase == 3:
-            self.message = (
-                f"Fase ativa: {self.economic_challenge.name}. "
-                f"Custo minimo: {self.economic_game.optimal_cost:g}."
-            )
-        elif phase == 4:
-            self.message = f"Fase ativa: {self.euler_challenge.name}."
-        else:
-            self.message = (
-                f"Fase ativa: {self.final_challenge.name}. "
-                "Alcance a saida e retorne ao inicio."
-            )
 
     def _restart_hamilton_attempt(self) -> None:
         self.hamilton_game.reset()
-        self.selected_floor = None
+        self._reset_attempt_tracking()
         self.message = "Tentativa reiniciada no andar inicial."
 
     def _restart_economic_attempt(self) -> None:
         self.economic_game.reset()
-        self.selected_floor = None
+        self._reset_attempt_tracking()
         self.message = (
             "Tentativa reiniciada no andar inicial. "
             f"Custo minimo: {self.economic_game.optimal_cost:g}."
@@ -328,34 +581,202 @@ class ElevatorPrototype:
 
     def _restart_euler_attempt(self) -> None:
         self.euler_game.reset()
-        self.selected_floor = None
+        self._reset_attempt_tracking()
         self.message = "Inspecao reiniciada no andar inicial."
 
     def _restart_final_attempt(self) -> None:
         self.final_game.reset()
-        self.selected_floor = None
+        self._reset_attempt_tracking()
         self.message = "Tentativa reiniciada no andar inicial."
 
     def _draw(self) -> None:
         self.screen.fill(BACKGROUND)
-        self._draw_header()
-        self._draw_floor_panel()
-        self._draw_destination_panel()
-        self._draw_footer()
+        if self.menu.screen is Screen.MAIN_MENU:
+            self._draw_main_menu()
+        elif self.menu.screen is Screen.LEVEL_SELECT:
+            self._draw_level_select()
+        elif self.menu.screen is Screen.RESULT:
+            self._draw_result()
+        else:
+            self._draw_header()
+            self._draw_floor_panel()
+            self._draw_destination_panel()
+            self._draw_footer()
         pygame.display.flip()
+
+    def _draw_main_menu(self) -> None:
+        title = self.title_font.render("FLOOR 13", True, TEXT)
+        subtitle = self.body_font.render(
+            "Explore os andares. Descubra a saida.", True, MUTED
+        )
+        self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 170)))
+        self.screen.blit(subtitle, subtitle.get_rect(center=(WIDTH // 2, 215)))
+        labels = (
+            (
+                self.main_continue_rect,
+                "JOGAR NOVAMENTE"
+                if self.progress_manager.all_levels_complete
+                else (
+                    "CONTINUAR"
+                    if self.progress_manager.completed_levels
+                    else "JOGAR"
+                ),
+            ),
+            (self.main_select_rect, "SELECIONAR FASES"),
+            (self.main_exit_rect, "SAIR"),
+        )
+        for rect, label in labels:
+            pygame.draw.rect(self.screen, PANEL, rect, border_radius=12)
+            pygame.draw.rect(self.screen, ACCENT_DARK, rect, width=2, border_radius=12)
+            text = self.body_font.render(label, True, TEXT)
+            self.screen.blit(text, text.get_rect(center=rect.center))
+        self._text(
+            f"Pontuacao acumulada: {self.saved_progress['total_score']}",
+            self.small_font,
+            ACCENT,
+            (WIDTH // 2 - 120, 500),
+        )
+
+    def _draw_level_select(self) -> None:
+        self._text("SELECIONE UMA FASE", self.title_font, TEXT, (64, 54))
+        self._text(
+            "Fases bloqueadas serao liberadas ao concluir a anterior.",
+            self.small_font,
+            MUTED,
+            (66, 104),
+        )
+        self.level_rects.clear()
+        for index, level in enumerate(self.phase_levels):
+            phase = index + 1
+            rect = pygame.Rect(150, 150 + index * 75, 660, 62)
+            self.level_rects[phase] = rect
+            unlocked = self.progress_manager.can_start(phase)
+            completed = phase in self.progress_manager.completed_levels
+            background = (
+                ACCENT_DARK if completed else PANEL_LIGHT if unlocked else (39, 43, 55)
+            )
+            border = ACCENT if unlocked else (70, 75, 88)
+            pygame.draw.rect(self.screen, background, rect, border_radius=11)
+            pygame.draw.rect(self.screen, border, rect, width=2, border_radius=11)
+            status = (
+                f"CONCLUIDA  •  MELHOR {self.saved_progress['level_scores'][str(phase)]}"
+                if completed
+                else "DESBLOQUEADA"
+                if unlocked
+                else "BLOQUEADA"
+            )
+            self._text(
+                f"{phase}. {level.name}",
+                self.body_font,
+                TEXT if unlocked else MUTED,
+                (rect.x + 18, rect.y + 8),
+            )
+            self._text(
+                status,
+                self.small_font,
+                ACCENT if completed or unlocked else MUTED,
+                (rect.x + 18, rect.y + 36),
+            )
+        pygame.draw.rect(
+            self.screen, PANEL, self.level_back_rect, border_radius=10
+        )
+        self._text("VOLTAR", self.body_font, TEXT, (self.level_back_rect.x + 48, 560))
+
+    def _draw_result(self) -> None:
+        level_number = self.menu.result_level
+        if level_number is None or self.attempt_result is None:
+            self.menu.show_main_menu()
+            return
+        level = self.phase_levels[level_number - 1]
+        result = self.attempt_result
+        self._text("FASE CONCLUIDA", self.title_font, ACCENT, (64, 48))
+        self._text(level.name, self.heading_font, TEXT, (66, 100))
+        self._text(f"Pontuacao obtida: {result.score}", self.body_font, TEXT, (66, 150))
+        names = {item.identifier: item.name for item in level.items}
+        essential_names = ", ".join(
+            names.get(item_id, item_id) for item_id in result.essential_items
+        ) or "Nenhum"
+        bonus_names = ", ".join(
+            names.get(item_id, item_id) for item_id in result.bonus_items
+        ) or "Nenhum"
+        self._text(
+            f"Itens essenciais: {essential_names}",
+            self.small_font,
+            ACCENT,
+            (66, 194),
+        )
+        self._text(
+            f"Itens bonus: {bonus_names}",
+            self.small_font,
+            WARNING,
+            (66, 224),
+        )
+        challenge_labels = {
+            "collect_and_exit": "Coleta e saida",
+            "hamilton": "Caminho hamiltoniano",
+            "economic_optimal_route": "Rota de custo minimo",
+            "euler_trail": "Percurso de Euler",
+            "minimum_round_trip": "Ida e retorno pelo menor custo",
+        }
+        challenges = ", ".join(
+            challenge_labels.get(challenge, challenge)
+            for challenge in result.completed_challenges
+        )
+        objectives = ", ".join(
+            objective.name
+            for objective in level.optional_objectives
+            if objective.identifier in result.completed_objectives
+        ) or "Nenhum"
+        self._text(
+            f"Desafios cumpridos: {challenges}",
+            self.small_font,
+            TEXT,
+            (66, 264),
+        )
+        self._text(
+            f"Objetivos opcionais: {objectives}",
+            self.small_font,
+            TEXT,
+            (66, 294),
+        )
+        elapsed = (
+            f"{result.elapsed_seconds:.1f} s"
+            if result.elapsed_seconds is not None
+            else "Indisponivel"
+        )
+        self._text(
+            f"Deslocamentos: {result.movements}    Tempo: {elapsed}",
+            self.small_font,
+            MUTED,
+            (66, 330),
+        )
+        recommended = self.progress_manager.recommended_level
+        if recommended is not None:
+            next_text = f"Proxima fase desbloqueada: {recommended}. {self.phase_levels[recommended - 1].name}"
+        else:
+            next_text = "Todo o conteudo disponivel foi finalizado."
+        self._text(next_text, self.body_font, ACCENT, (66, 386))
+
+        buttons = (
+            (
+                self.result_continue_rect,
+                "CONTINUAR" if recommended is not None else "SELECIONAR FASES",
+            ),
+            (self.result_replay_rect, "REJOGAR"),
+            (self.result_select_rect, "SELECAO DE FASES"),
+        )
+        for rect, label in buttons:
+            pygame.draw.rect(self.screen, PANEL, rect, border_radius=10)
+            pygame.draw.rect(self.screen, ACCENT_DARK, rect, width=2, border_radius=10)
+            text = self.small_font.render(label, True, TEXT)
+            self.screen.blit(text, text.get_rect(center=rect.center))
 
     def _draw_header(self) -> None:
         self._text("FLOOR 13", self.title_font, TEXT, (64, 48))
-        if self.active_phase == 1:
-            phase_label = f"FASE 1 • {self.level.name.upper()}   F1-F5: TROCAR"
-        elif self.active_phase == 2:
-            phase_label = f"FASE 2 • {self.hamilton_challenge.name.upper()}   F1-F5: TROCAR"
-        elif self.active_phase == 3:
-            phase_label = f"FASE 3 • {self.economic_challenge.name.upper()}   F1-F5: TROCAR"
-        elif self.active_phase == 4:
-            phase_label = f"FASE 4 • {self.euler_challenge.name.upper()}   F1-F5: TROCAR"
-        else:
-            phase_label = f"FASE 5 • {self.final_challenge.name.upper()}   F1-F5: TROCAR"
+        phase_label = (
+            f"FASE {self.active_phase} • "
+            f"{self.phase_levels[self.active_phase - 1].name.upper()}"
+        )
         self._text(phase_label, self.small_font, ACCENT, (66, 91))
         pygame.draw.line(self.screen, PANEL_LIGHT, (64, 126), (896, 126), 2)
 
@@ -602,6 +1023,11 @@ class ElevatorPrototype:
         rect = pygame.Rect(574, 145, 322, 439)
         pygame.draw.rect(self.screen, PANEL, rect, border_radius=18)
         pygame.draw.rect(self.screen, PANEL_LIGHT, rect, width=1, border_radius=18)
+        available_items = (
+            self.game.items_on_current_floor
+            if self.active_phase == 1
+            else self.item_progress.items_on_floor(self.current_floor)
+        )
         if self.active_phase == 1:
             panel_title = "DESTINOS CONECTADOS"
             panel_hint = "Selecione um elevador"
@@ -617,6 +1043,8 @@ class ElevatorPrototype:
         else:
             panel_title = "CONEXOES DISPONIVEIS"
             panel_hint = "Arestas usadas nao podem repetir"
+        if available_items:
+            panel_hint = f"Item encontrado: {available_items[0].name}"
         self._text(panel_title, self.heading_font, TEXT, (600, 171))
         self._text(panel_hint, self.small_font, MUTED, (600, 201))
 
@@ -648,12 +1076,19 @@ class ElevatorPrototype:
             final_finished = (
                 self.active_phase == 5 and self.final_game.is_finished
             )
+            locked_connection = bool(self._missing_connection_keys(floor))
             color = (
                 ACCENT_DARK
                 if selected
                 else (
                     WARNING
-                    if visited or final_too_early or euler_used or final_finished
+                    if (
+                        visited
+                        or final_too_early
+                        or euler_used
+                        or final_finished
+                        or locked_connection
+                    )
                     else PANEL_LIGHT
                 )
             )
@@ -666,7 +1101,9 @@ class ElevatorPrototype:
                 border_radius=10,
             )
             destination_label = f"ANDAR {floor:02d}"
-            if visited:
+            if locked_connection:
+                destination_label += " • BLOQUEADO"
+            elif visited:
                 destination_label += " • VISITADO"
             elif final_too_early:
                 destination_label += " • FINAL"
@@ -698,29 +1135,18 @@ class ElevatorPrototype:
                 )
 
         self.collect_rect = pygame.Rect(600, 444, 270, 54)
-        if self.active_phase == 1:
-            pygame.draw.rect(
-                self.screen,
-                WARNING if self.game.items_on_current_floor else PANEL_LIGHT,
-                self.collect_rect,
-                border_radius=12,
-            )
-            self._text("COLETAR  [E]", self.body_font, BACKGROUND, (670, 460))
-        elif self.active_phase == 2:
-            pygame.draw.rect(
-                self.screen, WARNING, self.collect_rect, border_radius=12
-            )
-            self._text("REINICIAR  [R]", self.body_font, BACKGROUND, (656, 460))
-        elif self.active_phase == 3:
-            pygame.draw.rect(
-                self.screen, WARNING, self.collect_rect, border_radius=12
-            )
-            self._text("REINICIAR  [R]", self.body_font, BACKGROUND, (656, 460))
-        else:
-            pygame.draw.rect(
-                self.screen, WARNING, self.collect_rect, border_radius=12
-            )
-            self._text("REINICIAR  [R]", self.body_font, BACKGROUND, (656, 460))
+        pygame.draw.rect(
+            self.screen,
+            WARNING if available_items else PANEL_LIGHT,
+            self.collect_rect,
+            border_radius=12,
+        )
+        self._text(
+            f"COLETAR  [E]  ({len(available_items)})",
+            self.body_font,
+            BACKGROUND,
+            (650, 460),
+        )
 
         self.travel_rect = pygame.Rect(600, 510, 270, 58)
         pygame.draw.rect(
@@ -742,16 +1168,18 @@ class ElevatorPrototype:
         self._text(travel_label, self.body_font, TEXT, (635, 528))
 
     def _draw_footer(self) -> None:
+        self._text(
+            f"Pontos da tentativa: {self.score_manager.current_attempt_score}",
+            self.small_font,
+            ACCENT,
+            (735, 570),
+        )
         self._text(self.message, self.small_font, WARNING, (66, 599))
+        footer = "E coletar • "
         if self.active_phase in (2, 3, 4, 5):
-            self._text(
-                "R reiniciar • Esc sair",
-                self.small_font,
-                MUTED,
-                (735, 599),
-            )
-        else:
-            self._text("ESC • sair", self.small_font, MUTED, (820, 599))
+            footer += "R reiniciar • "
+        footer += "Esc sair"
+        self._text(footer, self.small_font, MUTED, (735, 599))
 
     def _draw_elevator_icon(self, x: int, y: int) -> None:
         lift = pygame.Rect(x, y, 92, 116)

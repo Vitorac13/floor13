@@ -1,0 +1,86 @@
+{
+  "version": 1,
+  "unlocked_levels": [
+    1,
+    2,
+    3
+  ],
+  "completed_levels": [
+    1,
+    2
+  ],
+  "level_scores": {
+    "1": 800,
+    "2": 700,
+    "3": 0,
+    "4": 0,
+    "5": 0
+  },
+  "best_results": {
+    "1": {
+      "score": 800,
+      "movements": 6,
+      "elapsed_seconds": 18.610284900001716,
+      "essential_items": [
+        "chave",
+        "fusivel",
+        "cartao"
+      ],
+      "bonus_items": [
+        "foto"
+      ],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": []
+    },
+    "2": {
+      "score": 700,
+      "movements": 5,
+      "elapsed_seconds": 5.509724299990921,
+      "essential_items": [],
+      "bonus_items": [
+        "mapa-amassado"
+      ],
+      "completed_challenges": [
+        "hamilton"
+      ],
+      "completed_objectives": [
+        "find-map"
+      ]
+    }
+  },
+  "last_results": {
+    "1": {
+      "score": 600,
+      "movements": 4,
+      "elapsed_seconds": 16.737890300006256,
+      "essential_items": [
+        "chave",
+        "fusivel",
+        "cartao"
+      ],
+      "bonus_items": [],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": []
+    },
+    "2": {
+      "score": 700,
+      "movements": 5,
+      "elapsed_seconds": 5.509724299990921,
+      "essential_items": [],
+      "bonus_items": [
+        "mapa-amassado"
+      ],
+      "completed_challenges": [
+        "hamilton"
+      ],
+      "completed_objectives": [
+        "find-map"
+      ]
+    }
+  },
+  "total_score": 1500
+}
