@@ -661,18 +661,23 @@ O resultado esperado é um protótipo jogável de cinco fases que demonstre, de 
 
 ---
 
-# 16. IMPLEMENTAÇÃO ATUAL — PRIMEIRA FASE
+# 16. IMPLEMENTAÇÃO ATUAL — FASES 1 E 2
 
 Além da estrutura matemática e da interface inicial, a fase **Primeiro
 contato** já tem seis andares, exploração, itens obrigatórios e bônus, coleta e
 condição de vitória. Os dados e a validação da fase ficam fora da apresentação
 gráfica, e as regras de progresso são reutilizáveis por futuras fases.
 
-Na configuração atual, os andares 1 e 6 não têm itens; os andares 2, 3 e 4
-contêm os três itens obrigatórios e o andar 5 contém um bônus opcional. A lista
-de itens da fase pode ser alterada sem preencher todos os andares ou manter
+Na fase **Primeiro contato**, os andares 1 e 6 não têm itens; os andares 2, 3
+e 4 contêm os três itens obrigatórios e o andar 5 contém um bônus opcional. A
+lista de itens pode ser alterada sem preencher todos os andares ou manter
 quantidades fixas. `Level.items_by_floor` fornece uma lista (possivelmente
 vazia) para cada vértice, sem duplicar o grafo.
+
+A fase **Sem voltar atrás** utiliza uma configuração e um estado próprios:
+visita cada um dos seis vértices uma única vez, começando no andar 1 e
+terminando obrigatoriamente no andar 6. A rota é validada ao carregar o
+desafio; becos sem saída bloqueiam a tentativa, que pode ser reiniciada.
 
 Para instalar a biblioteca gráfica e executar o protótipo no Windows:
 
@@ -683,10 +688,15 @@ python main.py
 
 Na janela:
 
+- Alterne entre as fases com `F1` e `F2`; o progresso de cada uma é mantido
+  enquanto a janela estiver aberta.
 - Selecione um destino conectado clicando nele ou usando as teclas `1` a `6`.
 - Viaje com **VIAJAR** ou `Enter`.
 - Colete itens disponíveis no andar com **COLETAR** ou `E`. Os bônus são
   opcionais.
+- Na fase 2, não é possível repetir andares; o andar 6 só pode ser visitado por
+  último. Use **MOVER** ou `Enter` para avançar e **REINICIAR** ou `R` para
+  começar a tentativa novamente.
 - `Esc` fecha o jogo.
 
 Para executar os testes matemáticos e de progressão:
@@ -696,6 +706,6 @@ python -m unittest discover -s tests -v
 ```
 
 Os testes cobrem a estrutura do grafo, BFS e Dijkstra, conectividade,
-movimentação, exploração, coleta, saída bloqueada, conclusão da fase e a
-possibilidade de vencer sem bônus. Os desafios de Euler/Hamilton, pontuação,
-salvamento e as outras fases ainda não foram implementados.
+movimentação, exploração, coleta, saída bloqueada, conclusão da fase,
+possibilidade de vencer sem bônus e o desafio hamiltoniano da fase 2. A fase 3,
+Euler, pontuação e salvamento ainda não foram implementados.
