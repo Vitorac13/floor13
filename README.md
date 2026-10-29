@@ -661,7 +661,7 @@ O resultado esperado é um protótipo jogável de cinco fases que demonstre, de 
 
 ---
 
-# 16. IMPLEMENTAÇÃO ATUAL — FASES 1 A 3
+# 16. IMPLEMENTAÇÃO ATUAL — FASES 1 A 4
 
 Além da estrutura matemática e da interface inicial, a fase **Primeiro
 contato** já tem seis andares, exploração, itens obrigatórios e bônus, coleta e
@@ -686,6 +686,16 @@ sem vitória, permitindo reiniciá-la.
 
 Uma rota ótima de referência é `1 → 3 → 5 → 6`, com custo total **6**. A rota `1 → 2 → 6` usa menos deslocamentos, mas custa **11**. A rota alternativa `1 → 3 → 4 → 5 → 6` também custa **6** e conclui o desafio.
 
+A fase **Inspeção completa** usa um grafo simples com cinco andares e sete
+conexões. O início é o andar 1 e o fim obrigatório é o andar 4, os dois
+vértices de grau ímpar. Cada conexão pode ser atravessada uma única vez; os
+andares podem ser revisitados. Como `Graph` representa um grafo simples com
+lista de adjacência por vizinho, conexões paralelas não são suportadas; cada
+aresta é identificada pelo par não direcionado de andares. Esta configuração
+também não utiliza laços (conexões de um andar para ele mesmo).
+
+Uma rota de Euler válida é `1 → 2 → 3 → 1 → 4 → 5 → 2 → 4`.
+
 Para instalar a biblioteca gráfica e executar o protótipo no Windows:
 
 ```powershell
@@ -695,7 +705,7 @@ python main.py
 
 Na janela:
 
-- Alterne entre as fases com `F1`, `F2` e `F3`; o progresso de cada uma é mantido
+- Alterne entre as fases com `F1` a `F4`; o progresso de cada uma é mantido
   enquanto a janela estiver aberta.
 - Selecione um destino conectado clicando nele ou usando as teclas `1` a `6`.
 - Viaje com **VIAJAR** ou `Enter`.
@@ -707,6 +717,8 @@ Na janela:
 - Na fase 3, cada destino mostra o custo da aresta; o custo acumulado e o
   mínimo calculado por Dijkstra aparecem no painel. Use **REINICIAR** ou `R`
   para iniciar outra tentativa.
+- Na fase 4, cada conexão usada é marcada e não pode ser atravessada de novo;
+  revisitar andares continua permitido. Use **REINICIAR** ou `R` para recomeçar.
 - `Esc` fecha o jogo.
 
 Para executar os testes matemáticos e de progressão:
@@ -718,4 +730,5 @@ python -m unittest discover -s tests -v
 Os testes cobrem a estrutura do grafo, BFS e Dijkstra, conectividade,
 movimentação, exploração, coleta, saída bloqueada, conclusão da fase,
 possibilidade de vencer sem bônus, o desafio hamiltoniano da fase 2 e o custo
-mínimo da fase 3. Euler, pontuação e salvamento ainda não foram implementados.
+mínimo da fase 3, além do caminho de Euler da fase 4. A fase 5, pontuação e
+salvamento ainda não foram implementados.

@@ -8,6 +8,8 @@ import pygame
 
 from economic_challenge import EconomicChallengeManager
 from economic_game_state import EconomicGameState
+from euler_challenge import EulerChallengeManager
+from euler_game_state import EulerGameState
 from game_state import GameState
 from hamilton_challenge import HamiltonChallengeManager
 from hamilton_game_state import HamiltonGameState
@@ -36,6 +38,8 @@ class ElevatorPrototype:
         self.hamilton_game = HamiltonGameState(self.hamilton_challenge)
         self.economic_challenge = EconomicChallengeManager.create_economic_elevator()
         self.economic_game = EconomicGameState(self.economic_challenge)
+        self.euler_challenge = EulerChallengeManager.create_full_inspection()
+        self.euler_game = EulerGameState(self.euler_challenge)
         self.active_phase = 1
         pygame.display.set_caption("Floor 13")
         self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -57,7 +61,9 @@ class ElevatorPrototype:
             return self.game.current_floor
         if self.active_phase == 2:
             return self.hamilton_game.current_floor
-        return self.economic_game.current_floor
+        if self.active_phase == 3:
+            return self.economic_game.current_floor
+        return self.euler_game.current_floor
 
     @property
     def active_graph(self) -> Graph[int]:
@@ -65,7 +71,9 @@ class ElevatorPrototype:
             return self.level.graph
         if self.active_phase == 2:
             return self.hamilton_challenge.graph
-        return self.economic_challenge.graph
+        if self.active_phase == 3:
+            return self.economic_challenge.graph
+        return self.euler_challenge.graph
 
     def run(self) -> None:
         while True:
@@ -88,11 +96,15 @@ class ElevatorPrototype:
                     self._switch_phase(2)
                 if event.key == pygame.K_F3:
                     self._switch_phase(3)
+                if event.key == pygame.K_F4:
+                    self._switch_phase(4)
                 if event.key == pygame.K_r:
                     if self.active_phase == 2:
                         self._restart_hamilton_attempt()
                     elif self.active_phase == 3:
                         self._restart_economic_attempt()
+                    elif self.active_phase == 4:
+                        self._restart_euler_attempt()
                 if event.key == pygame.K_RETURN:
                     self._travel()
                 if event.key == pygame.K_e and self.active_phase == 1:
@@ -105,8 +117,10 @@ class ElevatorPrototype:
                         self._collect_items()
                     elif self.active_phase == 2:
                         self._restart_hamilton_attempt()
-                    else:
+                    elif self.active_phase == 3:
                         self._restart_economic_attempt()
+                    else:
+                        self._restart_euler_attempt()
                     continue
                 if self.travel_rect.collidepoint(event.pos):
                     self._travel()
@@ -155,6 +169,31 @@ class ElevatorPrototype:
                 )
             return
 
+        if self.active_phase == 4:
+            edge = (
+                (self.current_floor, floor)
+                if self.current_floor < floor
+                else (floor, self.current_floor)
+            )
+            if not self.euler_challenge.graph.has_edge(self.current_floor, floor):
+                self.selected_floor = None
+                self.message = (
+                    f"Nao ha conexao entre os andares {self.current_floor:02d} "
+                    f"e {floor:02d}."
+                )
+            elif edge in self.euler_game.used_edges:
+                self.selected_floor = None
+                self.message = (
+                    f"A conexao {edge[0]:02d}-{edge[1]:02d} ja foi percorrida."
+                )
+            elif self.euler_game.is_complete:
+                self.selected_floor = None
+                self.message = "Inspecao concluida. Pressione R para reiniciar."
+            else:
+                self.selected_floor = floor
+                self.message = f"Conexao {edge[0]:02d}-{edge[1]:02d} selecionada."
+            return
+
         if not self.hamilton_challenge.graph.has_edge(self.current_floor, floor):
             self.selected_floor = None
             self.message = (
@@ -188,8 +227,10 @@ class ElevatorPrototype:
             self.message = self.game.move_to(self.selected_floor)
         elif self.active_phase == 2:
             self.message = self.hamilton_game.move_to(self.selected_floor)
-        else:
+        elif self.active_phase == 3:
             self.message = self.economic_game.move_to(self.selected_floor)
+        else:
+            self.message = self.euler_game.move_to(self.selected_floor)
         self.selected_floor = None
 
     def _collect_items(self) -> None:
@@ -208,7 +249,7 @@ class ElevatorPrototype:
             self.message = f"Itens coletados: {names}."
 
     def _switch_phase(self, phase: int) -> None:
-        if phase not in (1, 2, 3):
+        if phase not in (1, 2, 3, 4):
             return
         self.active_phase = phase
         self.selected_floor = None
@@ -216,11 +257,13 @@ class ElevatorPrototype:
             self.message = f"Fase ativa: {self.level.name}."
         elif phase == 2:
             self.message = f"Fase ativa: {self.hamilton_challenge.name}."
-        else:
+        elif phase == 3:
             self.message = (
                 f"Fase ativa: {self.economic_challenge.name}. "
                 f"Custo minimo: {self.economic_game.optimal_cost:g}."
             )
+        else:
+            self.message = f"Fase ativa: {self.euler_challenge.name}."
 
     def _restart_hamilton_attempt(self) -> None:
         self.hamilton_game.reset()
@@ -235,6 +278,11 @@ class ElevatorPrototype:
             f"Custo minimo: {self.economic_game.optimal_cost:g}."
         )
 
+    def _restart_euler_attempt(self) -> None:
+        self.euler_game.reset()
+        self.selected_floor = None
+        self.message = "Inspecao reiniciada no andar inicial."
+
     def _draw(self) -> None:
         self.screen.fill(BACKGROUND)
         self._draw_header()
@@ -246,11 +294,13 @@ class ElevatorPrototype:
     def _draw_header(self) -> None:
         self._text("FLOOR 13", self.title_font, TEXT, (64, 48))
         if self.active_phase == 1:
-            phase_label = f"FASE 1 • {self.level.name.upper()}   F1-F3: TROCAR"
+            phase_label = f"FASE 1 • {self.level.name.upper()}   F1-F4: TROCAR"
         elif self.active_phase == 2:
-            phase_label = f"FASE 2 • {self.hamilton_challenge.name.upper()}   F1-F3: TROCAR"
+            phase_label = f"FASE 2 • {self.hamilton_challenge.name.upper()}   F1-F4: TROCAR"
+        elif self.active_phase == 3:
+            phase_label = f"FASE 3 • {self.economic_challenge.name.upper()}   F1-F4: TROCAR"
         else:
-            phase_label = f"FASE 3 • {self.economic_challenge.name.upper()}   F1-F3: TROCAR"
+            phase_label = f"FASE 4 • {self.euler_challenge.name.upper()}   F1-F4: TROCAR"
         self._text(phase_label, self.small_font, ACCENT, (66, 91))
         pygame.draw.line(self.screen, PANEL_LIGHT, (64, 126), (896, 126), 2)
 
@@ -277,8 +327,10 @@ class ElevatorPrototype:
             self._draw_item_progress()
         elif self.active_phase == 2:
             self._draw_hamilton_progress()
-        else:
+        elif self.active_phase == 3:
             self._draw_economic_progress()
+        else:
+            self._draw_euler_progress()
 
     def _draw_item_progress(self) -> None:
         self._text("ITENS NESTE ANDAR", self.small_font, MUTED, (94, 378))
@@ -392,6 +444,54 @@ class ElevatorPrototype:
             color = MUTED
         self._text(status, self.small_font, color, (94, 528))
 
+    def _draw_euler_progress(self) -> None:
+        visited_route = " > ".join(
+            f"{floor:02d}" for floor in self.euler_game.visited_sequence
+        )
+        self._text("INSPEÇÃO DE ARESTAS", self.small_font, MUTED, (94, 378))
+        used, total = self.euler_game.progress
+        self._text(
+            f"Conexoes percorridas: {used} de {total}",
+            self.small_font,
+            ACCENT,
+            (94, 402),
+        )
+        visited = "  ".join(
+            f"{floor:02d}" if floor in self.euler_game.visited_vertices else "--"
+            for floor in self.euler_challenge.graph.vertices
+        )
+        self._text("Andares visitados:", self.small_font, MUTED, (94, 427))
+        self._text(visited, self.small_font, TEXT, (230, 427))
+        self._text("Percurso:", self.small_font, MUTED, (94, 451))
+        self._text(visited_route, self.small_font, TEXT, (165, 451))
+
+        for index, edge in enumerate(self.euler_challenge.required_edges):
+            column = index // 4
+            row = index % 4
+            used_edge = edge in self.euler_game.used_edges
+            state = "percorrida" if used_edge else "pendente"
+            color = ACCENT if used_edge else MUTED
+            self._text(
+                f"{edge[0]:02d}-{edge[1]:02d}: {state}",
+                self.small_font,
+                color,
+                (94 + column * 215, 477 + row * 20),
+            )
+
+        if self.euler_game.is_complete:
+            status = "Todas as conexões inspecionadas!"
+            color = ACCENT
+        elif self.euler_game.is_blocked:
+            status = "Sem conexoes disponiveis. Pressione R para reiniciar."
+            color = WARNING
+        else:
+            status = (
+                f"Inicio {self.euler_challenge.start_floor:02d} "
+                f"• fim {self.euler_challenge.end_floor:02d}"
+            )
+            color = MUTED
+        self._text(status, self.small_font, color, (94, 560))
+
     def _draw_destination_panel(self) -> None:
         rect = pygame.Rect(574, 145, 322, 439)
         pygame.draw.rect(self.screen, PANEL, rect, border_radius=18)
@@ -402,9 +502,12 @@ class ElevatorPrototype:
         elif self.active_phase == 2:
             panel_title = "PROXIMOS ANDARES"
             panel_hint = "Visitados nao podem ser repetidos"
-        else:
+        elif self.active_phase == 3:
             panel_title = "ELEVADORES E CUSTOS"
             panel_hint = "Peso da aresta nesta conexao"
+        else:
+            panel_title = "CONEXOES DISPONIVEIS"
+            panel_hint = "Arestas usadas nao podem repetir"
         self._text(panel_title, self.heading_font, TEXT, (600, 171))
         self._text(panel_hint, self.small_font, MUTED, (600, 201))
 
@@ -425,10 +528,22 @@ class ElevatorPrototype:
                 and len(self.hamilton_game.visited_sequence)
                 != len(self.hamilton_challenge.graph.vertices) - 1
             )
+            euler_edge = (
+                (self.current_floor, floor)
+                if self.current_floor < floor
+                else (floor, self.current_floor)
+            )
+            euler_used = (
+                self.active_phase == 4 and euler_edge in self.euler_game.used_edges
+            )
             color = (
                 ACCENT_DARK
                 if selected
-                else (WARNING if visited or final_too_early else PANEL_LIGHT)
+                else (
+                    WARNING
+                    if visited or final_too_early or euler_used
+                    else PANEL_LIGHT
+                )
             )
             pygame.draw.rect(self.screen, color, destination, border_radius=10)
             pygame.draw.rect(
@@ -443,18 +558,24 @@ class ElevatorPrototype:
                 destination_label += " • VISITADO"
             elif final_too_early:
                 destination_label += " • FINAL"
+            elif euler_used:
+                destination_label += " • USADA"
             self._text(
                 (
                     f"{destination_label}  CUSTO "
                     f"{self.active_graph.weight(self.current_floor, floor):g}"
                     if self.active_phase == 3
-                    else destination_label
+                    else (
+                        f"{destination_label}  INSPECIONADA"
+                        if self.active_phase == 4 and euler_used
+                        else destination_label
+                    )
                 ),
                 self.body_font,
                 TEXT,
                 (destination.x + 14, destination.y + 8),
             )
-            if self.active_phase != 3:
+            if self.active_phase not in (3, 4):
                 self._text(
                     "›",
                     self.heading_font,
@@ -476,6 +597,11 @@ class ElevatorPrototype:
                 self.screen, WARNING, self.collect_rect, border_radius=12
             )
             self._text("REINICIAR  [R]", self.body_font, BACKGROUND, (656, 460))
+        elif self.active_phase == 3:
+            pygame.draw.rect(
+                self.screen, WARNING, self.collect_rect, border_radius=12
+            )
+            self._text("REINICIAR  [R]", self.body_font, BACKGROUND, (656, 460))
         else:
             pygame.draw.rect(
                 self.screen, WARNING, self.collect_rect, border_radius=12
@@ -493,13 +619,15 @@ class ElevatorPrototype:
             travel_label = "VIAJAR  [ENTER]"
         elif self.active_phase == 2:
             travel_label = "MOVER  [ENTER]"
-        else:
+        elif self.active_phase == 3:
             travel_label = "VIAJAR  [ENTER]"
+        else:
+            travel_label = "INSPECIONAR  [ENTER]"
         self._text(travel_label, self.body_font, TEXT, (635, 528))
 
     def _draw_footer(self) -> None:
         self._text(self.message, self.small_font, WARNING, (66, 599))
-        if self.active_phase in (2, 3):
+        if self.active_phase in (2, 3, 4):
             self._text(
                 "R reiniciar • Esc sair",
                 self.small_font,
