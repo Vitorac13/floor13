@@ -7,19 +7,27 @@ from level_manager import LevelManager
 
 
 class PhaseJsonTests(unittest.TestCase):
-    def test_all_five_phase_files_load_and_keep_the_existing_graphs(self) -> None:
+    def test_all_seven_phase_files_load_and_keep_the_existing_graphs(self) -> None:
         levels = [
             LevelManager.load_level(f"phase-0{number}")
-            for number in range(1, 6)
+            for number in range(1, 8)
         ]
 
-        self.assertEqual([level.number for level in levels], [1, 2, 3, 4, 5])
-        self.assertEqual([len(level.graph.vertices) for level in levels], [6, 6, 6, 5, 6])
+        self.assertEqual([level.number for level in levels], [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual(
+            [len(level.graph.vertices) for level in levels],
+            [6, 6, 6, 5, 6, 6, 7],
+        )
         self.assertEqual(levels[0].name, "Primeiro contato")
         self.assertEqual(levels[1].name, "Sem voltar atrás")
         self.assertEqual(levels[2].name, "Elevador econômico")
         self.assertEqual(levels[3].name, "Inspeção completa")
         self.assertEqual(levels[4].name, "A saída")
+        self.assertEqual(levels[6].exit_floor, 7)
+        self.assertEqual(
+            levels[6].exit_requires_keys,
+            ("chave-prateada", "chave-dourada"),
+        )
 
     def test_loader_rejects_connections_to_unknown_vertices(self) -> None:
         config = LevelManager.load_phase_config("phase-01")

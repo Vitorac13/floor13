@@ -70,20 +70,21 @@ class DynamicLevelTests(unittest.TestCase):
         pygame.quit()
         self.temporary_directory.cleanup()
 
-    def test_default_directory_discovers_the_five_existing_phases(self) -> None:
+    def test_default_directory_discovers_all_seven_existing_phases(self) -> None:
         discovery = LevelManager.discover_levels()
 
-        self.assertEqual(len(discovery.levels), 5)
+        self.assertEqual(len(discovery.levels), 7)
         self.assertEqual(
             [level.identifier for level in discovery.levels],
-            [f"phase-0{number}" for number in range(1, 6)],
+            [f"phase-0{number}" for number in range(1, 8)],
         )
         self.assertFalse(
             [diagnostic for diagnostic in discovery.diagnostics if diagnostic.severity == "error"]
         )
 
     def test_custom_json_phase_appears_in_menu_and_progresses_without_python_changes(self) -> None:
-        for path in DEFAULT_LEVELS_DIR.glob("*.json"):
+        for number in range(1, 6):
+            path = DEFAULT_LEVELS_DIR / f"phase-0{number}.json"
             shutil.copy(path, self.levels_dir / path.name)
         write_config(self.levels_dir, "phase-06.json", custom_phase())
 
@@ -233,7 +234,11 @@ class DynamicLevelTests(unittest.TestCase):
         save_path = self.levels_dir / "progress.json"
         save_path.write_text(json.dumps(old_save), encoding="utf-8")
 
-        five_levels = LevelManager.discover_levels().levels
+        five_levels = tuple(
+            level
+            for level in LevelManager.discover_levels().levels
+            if level.number <= 5
+        )
         migrated = SaveManager(save_path, five_levels).load()
         self.assertEqual(migrated["level_scores"]["phase-01"], 800)
         self.assertEqual(migrated["best_results"]["phase-01"]["score"], 800)
@@ -242,9 +247,7 @@ class DynamicLevelTests(unittest.TestCase):
 
         new_phase = custom_phase()
         write_config(self.levels_dir, "phase-06.json", new_phase)
-        six_levels = LevelManager.discover_levels(
-            DEFAULT_LEVELS_DIR
-        ).levels + (LevelManager.from_config(new_phase),)
+        six_levels = five_levels + (LevelManager.from_config(new_phase),)
         with_phase_six = SaveManager(save_path, six_levels).load()
         self.assertEqual(with_phase_six["best_results"]["phase-01"]["score"], 800)
         self.assertEqual(with_phase_six["level_scores"]["phase-01"], 800)

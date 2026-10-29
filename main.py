@@ -80,6 +80,9 @@ class ElevatorPrototype:
         self.selected_floor: int | None = None
         self.message = "Explore os andares e colete os itens para encontrar a saida."
         self.destination_rects: dict[int, pygame.Rect] = {}
+        self.destination_page = 0
+        self.destination_page_size = 4
+        self.destination_page_rects: dict[str, pygame.Rect] = {}
         self.collect_rect = pygame.Rect(600, 444, 270, 54)
         self.travel_rect = pygame.Rect(600, 510, 270, 58)
         self.main_continue_rect = pygame.Rect(330, 260, 300, 58)
@@ -148,8 +151,30 @@ class ElevatorPrototype:
                     self._travel()
                 elif event.key == pygame.K_e:
                     self._collect_items()
-                elif pygame.K_1 <= event.key <= pygame.K_6:
-                    self._select_floor(event.key - pygame.K_0)
+                elif event.key in (
+                    pygame.K_TAB,
+                    pygame.K_UP,
+                    pygame.K_DOWN,
+                    pygame.K_LEFT,
+                    pygame.K_RIGHT,
+                ):
+                    reverse = event.key in (pygame.K_UP, pygame.K_LEFT)
+                    if event.key == pygame.K_TAB:
+                        reverse = bool(event.mod & pygame.KMOD_SHIFT)
+                    self._cycle_destination(reverse)
+                continue
+
+            if (
+                event.type == pygame.MOUSEWHEEL
+                and self.menu.screen is Screen.LEVEL_SELECT
+            ):
+                page_size = 6
+                max_offset = max(0, len(self.phase_levels) - page_size)
+                self.level_select_offset = min(
+                    max(0, self.level_select_offset - event.y), max_offset
+                )
+                continue
+
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if self.menu.screen is Screen.MAIN_MENU:
                     if self.main_continue_rect.collidepoint(event.pos):
@@ -169,12 +194,6 @@ class ElevatorPrototype:
                             self._start_phase(phase)
                             break
                     continue
-            if event.type == pygame.MOUSEWHEEL and self.menu.screen is Screen.LEVEL_SELECT:
-                page_size = 6
-                max_offset = max(0, len(self.phase_levels) - page_size)
-                self.level_select_offset = min(
-                    max(0, self.level_select_offset - event.y), max_offset
-                )
                 if self.menu.screen is Screen.RESULT:
                     if self.result_continue_rect.collidepoint(event.pos):
                         self._continue_after_result()
@@ -182,6 +201,28 @@ class ElevatorPrototype:
                         self._replay_result()
                     elif self.result_select_rect.collidepoint(event.pos):
                         self.menu.show_level_select()
+                    continue
+                if self.menu.screen is not Screen.GAME:
+                    continue
+                previous_page = self.destination_page_rects.get("previous")
+                next_page = self.destination_page_rects.get("next")
+                if previous_page is not None and previous_page.collidepoint(event.pos):
+                    self.destination_page = max(0, self.destination_page - 1)
+                    continue
+                if next_page is not None and next_page.collidepoint(event.pos):
+                    self.destination_page = min(
+                        self.destination_page + 1,
+                        max(
+                            0,
+                            (
+                                len(self.active_graph.neighbors(self.current_floor))
+                                + self.destination_page_size
+                                - 1
+                            )
+                            // self.destination_page_size
+                            - 1,
+                        ),
+                    )
                     continue
                 if self.collect_rect.collidepoint(event.pos):
                     self._collect_items()
@@ -503,6 +544,49 @@ class ElevatorPrototype:
             self.selected_floor = floor
             self.message = f"Destino selecionado: andar {floor:02d}."
 
+    def _cycle_destination(self, reverse: bool = False) -> None:
+        if self.level is None or self.active_state is None:
+            return
+        challenge_type = self.level.challenge_type
+        if challenge_type in ("hamilton", "euler"):
+            candidates = list(self.active_state.valid_destinations)
+        elif (
+            challenge_type == "economic"
+            and self.economic_game.is_finished
+            or challenge_type == "final"
+            and self.final_game.is_finished
+            or challenge_type == "collect_and_exit"
+            and self.game.is_complete
+        ):
+            candidates = []
+        else:
+            candidates = [
+                floor
+                for floor, _ in self.active_graph.neighbors(self.current_floor)
+            ]
+        candidates = [
+            floor
+            for floor in candidates
+            if not self._missing_connection_keys(floor)
+        ]
+        if not candidates:
+            self.selected_floor = None
+            self.message = "Nao ha destinos disponiveis para selecionar."
+            return
+
+        if self.selected_floor in candidates:
+            offset = candidates.index(self.selected_floor)
+            index = (offset + (-1 if reverse else 1)) % len(candidates)
+        else:
+            index = len(candidates) - 1 if reverse else 0
+        destination = candidates[index]
+        all_neighbors = [
+            floor
+            for floor, _ in self.active_graph.neighbors(self.current_floor)
+        ]
+        self.destination_page = all_neighbors.index(destination) // self.destination_page_size
+        self._select_floor(destination)
+
     def _travel(self) -> None:
         if self.selected_floor is None or self.active_state is None or self.level is None:
             self.message = "Selecione primeiro um dos destinos disponiveis."
@@ -517,6 +601,7 @@ class ElevatorPrototype:
         self.selected_floor = None
         current_move_count = self._successful_move_count()
         if current_move_count > previous_move_count:
+            self.destination_page = 0
             self.attempt_movements += 1
             if self.level.challenge_type != "collect_and_exit":
                 self.item_progress.record_movement(self.current_floor)
@@ -1140,10 +1225,19 @@ class ElevatorPrototype:
         self._text(panel_hint, self.small_font, MUTED, (600, 201))
 
         self.destination_rects.clear()
-        for index, (floor, _) in enumerate(
-            self.active_graph.neighbors(self.current_floor)
-        ):
-            destination = pygame.Rect(600, 230 + index * 48, 270, 40)
+        neighbors = list(self.active_graph.neighbors(self.current_floor))
+        page_count = max(
+            1,
+            (len(neighbors) + self.destination_page_size - 1)
+            // self.destination_page_size,
+        )
+        self.destination_page = min(self.destination_page, page_count - 1)
+        first_visible = self.destination_page * self.destination_page_size
+        visible_neighbors = neighbors[
+            first_visible : first_visible + self.destination_page_size
+        ]
+        for index, (floor, _) in enumerate(visible_neighbors):
+            destination = pygame.Rect(600, 230 + index * 46, 270, 40)
             self.destination_rects[floor] = destination
             selected = floor == self.selected_floor
             visited = (
@@ -1224,6 +1318,36 @@ class ElevatorPrototype:
                     ACCENT,
                     (destination.right - 32, destination.y + 5),
                 )
+
+        self.destination_page_rects.clear()
+        if page_count > 1:
+            previous_rect = pygame.Rect(600, 414, 130, 24)
+            next_rect = pygame.Rect(740, 414, 130, 24)
+            self.destination_page_rects = {
+                "previous": previous_rect,
+                "next": next_rect,
+            }
+            for name, rect, enabled, label in (
+                ("previous", previous_rect, self.destination_page > 0, "< ANTERIORES"),
+                ("next", next_rect, self.destination_page < page_count - 1, "PROXIMOS >"),
+            ):
+                color = PANEL_LIGHT if enabled else PANEL
+                pygame.draw.rect(self.screen, color, rect, border_radius=7)
+                pygame.draw.rect(
+                    self.screen,
+                    ACCENT_DARK if enabled else (70, 75, 88),
+                    rect,
+                    width=1,
+                    border_radius=7,
+                )
+                text = self.small_font.render(label, True, TEXT if enabled else MUTED)
+                self.screen.blit(text, text.get_rect(center=rect.center))
+            self._text(
+                f"{self.destination_page + 1}/{page_count}",
+                self.small_font,
+                MUTED,
+                (716, 417),
+            )
 
         self.collect_rect = pygame.Rect(600, 444, 270, 54)
         pygame.draw.rect(

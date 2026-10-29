@@ -15,7 +15,8 @@
     "phase-03",
     "phase-04",
     "phase-05",
-    "phase-06"
+    "phase-06",
+    "phase-07"
   ],
   "level_scores": {
     "phase-01": 800,
@@ -23,8 +24,8 @@
     "phase-03": 300,
     "phase-04": 300,
     "phase-05": 500,
-    "phase-06": 600,
-    "phase-07": 0
+    "phase-06": 800,
+    "phase-07": 1100
   },
   "best_results": {
     "phase-01": {
@@ -95,9 +96,9 @@
       ]
     },
     "phase-06": {
-      "score": 600,
-      "movements": 5,
-      "elapsed_seconds": 13.867811400006758,
+      "score": 800,
+      "movements": 6,
+      "elapsed_seconds": 9.130452299999888,
       "essential_items": [
         "chave-antiga"
       ],
@@ -107,7 +108,27 @@
       "completed_challenges": [
         "collect_and_exit"
       ],
-      "completed_objectives": []
+      "completed_objectives": [
+        "visit-floor-5"
+      ]
+    },
+    "phase-07": {
+      "score": 1100,
+      "movements": 16,
+      "elapsed_seconds": 32.849521500000264,
+      "essential_items": [
+        "chave-prateada",
+        "chave-dourada"
+      ],
+      "bonus_items": [
+        "gema-das-sombras"
+      ],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": [
+        "visit-floor-5"
+      ]
     }
   },
   "last_results": {
@@ -179,20 +200,42 @@
       ]
     },
     "phase-06": {
-      "score": 400,
-      "movements": 3,
-      "elapsed_seconds": 10.745622999995248,
+      "score": 800,
+      "movements": 6,
+      "elapsed_seconds": 9.130452299999888,
       "essential_items": [
         "chave-antiga"
       ],
-      "bonus_items": [],
+      "bonus_items": [
+        "reliquia"
+      ],
       "completed_challenges": [
         "collect_and_exit"
       ],
-      "completed_objectives": []
+      "completed_objectives": [
+        "visit-floor-5"
+      ]
+    },
+    "phase-07": {
+      "score": 1100,
+      "movements": 16,
+      "elapsed_seconds": 32.849521500000264,
+      "essential_items": [
+        "chave-prateada",
+        "chave-dourada"
+      ],
+      "bonus_items": [
+        "gema-das-sombras"
+      ],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": [
+        "visit-floor-5"
+      ]
     }
   },
-  "total_score": 3200,
+  "total_score": 4500,
   "unlocked_levels": [
     1,
     2,
@@ -208,6 +251,7 @@
     3,
     4,
     5,
-    6
+    6,
+    7
   ]
 }
