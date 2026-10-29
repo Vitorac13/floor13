@@ -2,12 +2,13 @@
 
 Jogo 2D de exploração feito em Python e Pygame, no qual cada andar de um prédio é um vértice e cada elevador é uma aresta de um grafo. Explore conexões, cumpra desafios de teoria dos grafos e encontre a saída.
 
-> **Estado do projeto:** o repositório contém 12 fases JSON carregadas automaticamente. As fases 8, 10, 11 e 12 ainda usam o nome genérico “Nova fase”.
+> **Conteúdo:** 13 fases JSON carregadas automaticamente. As fases 6 a 13 aumentam progressivamente de 6 a 13 andares; a fase 13 é a mais complexa, com 13 andares e 25 conexões.
 
 ## Funcionalidades
 
 - Exploração de fases definidas como grafos não direcionados, com conexões ponderadas.
 - Desafios de coleta e saída, caminho hamiltoniano, menor custo, trilha euleriana e ida e retorno de custo mínimo.
+- Progressão de desafios e grafos crescentes: as fases 6–13 variam de 6 a 13 andares.
 - Itens essenciais, bônus, chaves e objetivos opcionais.
 - Editor visual para criar, alterar, validar e exportar fases.
 - Progressão, pontuações e melhores resultados salvos em JSON.

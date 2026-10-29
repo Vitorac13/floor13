@@ -1,0 +1,21 @@
+{
+  "id": "phase-07",
+  "number": 7,
+  "name": "O labirinto das sombras",
+  "graph": {
+    "vertices": [1, 2, 3, 4, 5, 6, 7],
+    "edges": [[1, 2], [2, 3], [3, 4], [4, 6], [5, 6], [6, 7], [2, 4], [3, 5], [1, 3], [4, 5], [2, 5]]
+  },
+  "start_floor": 1,
+  "exit_floor": 7,
+  "items": [
+    {"id": "chave-prateada", "name": "Chave prateada", "floor": 2, "type": "key", "score": 100},
+    {"id": "chave-dourada", "name": "Chave dourada", "floor": 5, "type": "key", "score": 100}
+  ],
+  "exit_requirements": {"keys": ["chave-prateada", "chave-dourada"], "challenges": []},
+  "challenge": {"type": "collect_and_exit"},
+  "optional_objectives": [
+    {"id": "visit-floor-7-4", "name": "Passagem escondida", "description": "Explore o quarto andar do labirinto.", "type": "visit_floor", "floor": 4, "reward": 200}
+  ],
+  "rewards": {"completion": 400}
+}

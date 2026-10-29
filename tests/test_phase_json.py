@@ -29,6 +29,29 @@ class PhaseJsonTests(unittest.TestCase):
             ("chave-prateada", "chave-dourada"),
         )
 
+    def test_new_phases_scale_to_thirteen_floors_and_mix_graph_challenges(self) -> None:
+        discovery = LevelManager.discover_levels()
+        levels = [level for level in discovery.levels if 6 <= level.number <= 13]
+
+        self.assertEqual([level.number for level in levels], list(range(6, 14)))
+        self.assertEqual(
+            [len(level.graph.vertices) for level in levels],
+            list(range(6, 14)),
+        )
+        self.assertEqual(
+            {level.challenge_type for level in levels},
+            {"collect_and_exit", "hamilton", "economic", "euler", "final"},
+        )
+        final_level = levels[-1]
+        self.assertEqual(final_level.graph.edge_count, 25)
+        self.assertGreater(
+            final_level.graph.edge_count,
+            max(level.graph.edge_count for level in levels[:-1]),
+        )
+        self.assertFalse(
+            [item for item in discovery.diagnostics if item.severity == "error"]
+        )
+
     def test_loader_rejects_connections_to_unknown_vertices(self) -> None:
         config = LevelManager.load_phase_config("phase-01")
         invalid_config = copy.deepcopy(config)

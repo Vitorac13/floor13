@@ -1,0 +1,21 @@
+{
+  "id": "phase-11",
+  "number": 11,
+  "name": "Travessia dos onze andares",
+  "graph": {
+    "vertices": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+    "edges": [[1, 2, 4], [2, 3, 4], [3, 4, 4], [4, 5, 4], [5, 6, 4], [6, 7, 4], [7, 8, 4], [8, 9, 4], [9, 10, 4], [10, 11, 4], [1, 3, 2], [3, 6, 3], [6, 9, 2], [9, 11, 3], [2, 7, 10], [4, 8, 2], [5, 10, 5], [2, 5, 4]]
+  },
+  "start_floor": 1,
+  "exit_floor": 11,
+  "items": [
+    {"id": "manual-11", "name": "Manual dos elevadores", "floor": 8, "type": "bonus", "score": 250}
+  ],
+  "exit_requirements": {"keys": [], "challenges": ["hamilton"]},
+  "challenge": {"type": "hamilton", "end_floor": 11},
+  "optional_objectives": [
+    {"id": "inspect-floor-11-5", "name": "Painel auxiliar", "description": "Passe pelo quinto andar.", "type": "visit_floor", "floor": 5, "reward": 150},
+    {"id": "bonus-11", "name": "Manual recuperado", "description": "Encontre o manual de manutenção.", "type": "collect_all_bonus", "reward": 250}
+  ],
+  "rewards": {"completion": 500}
+}

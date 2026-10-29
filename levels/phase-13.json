@@ -1,0 +1,23 @@
+{
+  "id": "phase-13",
+  "number": 13,
+  "name": "O coração do prédio",
+  "graph": {
+    "vertices": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+    "edges": [[1, 2, 8], [2, 3, 8], [3, 4, 8], [4, 5, 8], [5, 6, 8], [6, 7, 8], [7, 8, 8], [8, 9, 8], [9, 10, 8], [10, 11, 8], [11, 12, 8], [12, 13, 8], [1, 4, 3], [4, 7, 3], [7, 10, 3], [10, 13, 3], [1, 3, 5], [2, 6, 4], [3, 8, 5], [4, 9, 4], [5, 10, 5], [6, 11, 4], [7, 12, 5], [8, 13, 4], [11, 13, 3]]
+  },
+  "start_floor": 1,
+  "exit_floor": 13,
+  "items": [
+    {"id": "chave-mestra-13", "name": "Chave mestra", "floor": 5, "type": "bonus", "score": 300},
+    {"id": "planta-central-13", "name": "Planta do núcleo central", "floor": 12, "type": "bonus", "score": 300}
+  ],
+  "exit_requirements": {"keys": [], "challenges": ["minimum_round_trip"]},
+  "challenge": {"type": "final", "destination_floor": 13, "return_floor": 1},
+  "optional_objectives": [
+    {"id": "inspect-floor-13-9", "name": "Observatório", "description": "Explore o nono andar durante a jornada.", "type": "visit_floor", "floor": 9, "reward": 250},
+    {"id": "bonus-13", "name": "Planta completa", "description": "Recolha os dois itens opcionais do prédio.", "type": "collect_all_bonus", "reward": 400},
+    {"id": "return-13", "name": "Volta perfeita", "description": "Retorne ao saguão após alcançar o último andar.", "type": "return_to_start", "reward": 300}
+  ],
+  "rewards": {"completion": 1000}
+}

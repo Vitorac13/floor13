@@ -1,0 +1,21 @@
+{
+  "id": "phase-08",
+  "number": 8,
+  "name": "O caminho mais curto",
+  "graph": {
+    "vertices": [1, 2, 3, 4, 5, 6, 7, 8],
+    "edges": [[1, 3, 1], [3, 4, 1], [4, 5, 1], [1, 2, 5], [2, 5, 5], [2, 6, 2], [6, 7, 2], [7, 8, 2], [8, 5, 8], [4, 7, 5], [3, 6, 5]]
+  },
+  "start_floor": 1,
+  "exit_floor": 8,
+  "items": [
+    {"id": "ficha-8", "name": "Ficha de manutenção", "floor": 3, "type": "bonus", "score": 200}
+  ],
+  "exit_requirements": {"keys": [], "challenges": ["economic_optimal_route"]},
+  "challenge": {"type": "economic", "destination_floor": 5},
+  "optional_objectives": [
+    {"id": "inspect-floor-8-7", "name": "Atalho técnico", "description": "Passe pelo sétimo andar.", "type": "visit_floor", "floor": 7, "reward": 150},
+    {"id": "bonus-8", "name": "Ficha recuperada", "description": "Encontre a ficha de manutenção.", "type": "collect_all_bonus", "reward": 200}
+  ],
+  "rewards": {"completion": 400}
+}

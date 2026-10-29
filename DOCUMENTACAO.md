@@ -78,7 +78,7 @@ Os algoritmos genéricos em `algorithms.py` são busca em largura (BFS), Dijkstr
 
 ## 5. Fases incluídas
 
-Os números e identificadores são lidos dos arquivos JSON. O conteúdo atual é:
+Os números e identificadores são lidos dos arquivos JSON. O projeto inclui 13 fases; as fases 6 a 13 aumentam de 6 até 13 andares:
 
 | Fase | Nome | Desafio |
 |---:|---|---|
@@ -87,15 +87,16 @@ Os números e identificadores são lidos dos arquivos JSON. O conteúdo atual é
 | 3 | Elevador econômico | Menor custo |
 | 4 | Inspeção completa | Euleriano |
 | 5 | A saída | Ida e volta de menor custo |
-| 6 | O andar esquecido | Coleta e saída |
-| 7 | O labirinto das sombras | Coleta e saída |
-| 8 | Nova fase | Coleta e saída |
-| 9 | Caminho barato | Menor custo |
-| 10 | Nova fase | Coleta e saída |
-| 11 | Nova fase | Coleta e saída |
-| 12 | Nova fase | Coleta e saída |
+| 6 | O andar esquecido | Coleta e saída — 6 andares |
+| 7 | O labirinto das sombras | Coleta e saída com chaves — 7 andares |
+| 8 | O caminho mais curto | Menor custo — 8 andares |
+| 9 | Inspeção em circuito | Euleriano — 9 andares |
+| 10 | Ida e volta pelo núcleo | Ida e volta de menor custo — 10 andares |
+| 11 | Travessia dos onze andares | Hamiltoniano — 11 andares |
+| 12 | A ala lacrada | Coleta e saída com chaves — 12 andares |
+| 13 | O coração do prédio | Ida e volta de menor custo — 13 andares, 25 conexões |
 
-O número de itens, andares, conexões e objetivos varia entre as fases. As fases com o nome genérico são configurações carregáveis e editáveis, não uma afirmação de conteúdo narrativo finalizado.
+As fases 6 a 13 formam uma progressão de tamanho e combinam coleta com chaves, caminhos hamiltonianos, caminhos de custo mínimo, trilhas eulerianas e rotas de ida e volta. A fase 13 usa o maior grafo do jogo: 13 andares, 25 conexões ponderadas, itens bônus e objetivos opcionais.
 
 ## 6. Arquitetura
 

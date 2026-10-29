@@ -1,0 +1,31 @@
+{
+  "id": "phase-12",
+  "number": 12,
+  "name": "A ala lacrada",
+  "graph": {
+    "vertices": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    "edges": [[1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 7], [7, 8], [8, 9], [9, 10], [10, 11], [11, 12], [3, 5], [6, 8], [8, 10], [9, 11], [10, 12]]
+  },
+  "start_floor": 1,
+  "exit_floor": 12,
+  "items": [
+    {"id": "chave-norte-12", "name": "Chave da ala norte", "floor": 2, "type": "key", "score": 100},
+    {"id": "fusivel-12", "name": "Fusível principal", "floor": 4, "type": "essential", "score": 100},
+    {"id": "mapa-12", "name": "Mapa da ala", "floor": 5, "type": "bonus", "score": 200},
+    {"id": "cartao-lab-12", "name": "Cartão do laboratório", "floor": 8, "type": "key", "score": 150},
+    {"id": "relatorio-12", "name": "Relatório confidencial", "floor": 9, "type": "bonus", "score": 250},
+    {"id": "registro-12", "name": "Registro do laboratório", "floor": 11, "type": "essential", "score": 150}
+  ],
+  "exit_requirements": {"keys": ["cartao-lab-12"], "challenges": []},
+  "connection_requirements": [
+    {"from": 5, "to": 6, "keys": ["chave-norte-12"]},
+    {"from": 10, "to": 11, "keys": ["cartao-lab-12"]}
+  ],
+  "challenge": {"type": "collect_and_exit"},
+  "optional_objectives": [
+    {"id": "inspect-floor-12-7", "name": "Corredor de serviço", "description": "Visite o sétimo andar.", "type": "visit_floor", "floor": 7, "reward": 200},
+    {"id": "bonus-12", "name": "Arquivo recuperado", "description": "Recolha todos os itens bônus.", "type": "collect_all_bonus", "reward": 300},
+    {"id": "return-12", "name": "Volta ao saguão", "description": "Retorne ao andar inicial depois de explorar o prédio.", "type": "return_to_start", "reward": 200}
+  ],
+  "rewards": {"completion": 600}
+}
