@@ -725,6 +725,15 @@ python -m pip install -r requirements.txt
 python main.py
 ```
 
+O jogo abre em uma janela redimensionável de **1280 × 720**. A interface e os
+controles mantêm a proporção durante o redimensionamento; em janelas menores que
+a área mínima do jogo, o tamanho mínimo é mantido.
+
+Para personalizar o fundo do menu, coloque sua imagem em
+`assets/menu_background.png`. A imagem é redimensionada sem deformação, com
+corte central quando necessário. Esse arquivo é opcional: se estiver ausente ou
+inválido, o menu usa o fundo de cor padrão.
+
 Na janela:
 
 - **Jogar/Continuar** inicia a primeira fase ainda não concluída. **Selecionar

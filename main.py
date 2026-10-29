@@ -23,6 +23,8 @@ from systems.score_manager import AttemptResult, ScoreManager
 
 WIDTH = 960
 HEIGHT = 640
+WINDOW_WIDTH = 1280
+WINDOW_HEIGHT = 720
 BACKGROUND = (19, 22, 32)
 PANEL = (31, 36, 50)
 PANEL_LIGHT = (43, 50, 67)
@@ -73,9 +75,22 @@ class ElevatorPrototype:
         self.attempt_started_at = time.monotonic()
         self.attempt_movements = 0
         pygame.display.set_caption("Floor 13")
-        self.screen = pygame.display.set_mode((WIDTH, HEIGHT))
+        self.window = pygame.display.set_mode(
+            (WINDOW_WIDTH, WINDOW_HEIGHT), pygame.RESIZABLE
+        )
+        self.screen = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        self._running = False
+        self.menu_background_path = (
+            Path(__file__).resolve().parent / "assets" / "menu_background.png"
+        )
+        self.menu_background = self._load_menu_background()
+        self._scaled_menu_background: pygame.Surface | None = None
+        self._scaled_menu_background_size: tuple[int, int] | None = None
+        self._menu_background_overlay: pygame.Surface | None = None
+        self._menu_background_overlay_size: tuple[int, int] | None = None
         self.clock = pygame.time.Clock()
         self.title_font = pygame.font.Font(None, 42)
+        self.menu_title_font = pygame.font.Font(None, 76)
         self.heading_font = pygame.font.Font(None, 29)
         self.body_font = pygame.font.Font(None, 24)
         self.small_font = pygame.font.Font(None, 20)
@@ -88,10 +103,10 @@ class ElevatorPrototype:
         self.destination_page_rects: dict[str, pygame.Rect] = {}
         self.collect_rect = pygame.Rect(600, 444, 270, 54)
         self.travel_rect = pygame.Rect(600, 510, 270, 58)
-        self.main_continue_rect = pygame.Rect(330, 244, 300, 58)
-        self.main_select_rect = pygame.Rect(330, 312, 300, 58)
-        self.main_editor_rect = pygame.Rect(330, 380, 300, 58)
-        self.main_exit_rect = pygame.Rect(330, 448, 300, 58)
+        self.main_continue_rect = pygame.Rect(64, 250, 340, 56)
+        self.main_select_rect = pygame.Rect(64, 318, 340, 56)
+        self.main_editor_rect = pygame.Rect(64, 386, 340, 56)
+        self.main_exit_rect = pygame.Rect(64, 454, 340, 56)
         self.level_rects: dict[str, pygame.Rect] = {}
         self.level_back_rect = pygame.Rect(64, 570, 190, 48)
         self.result_replay_rect = pygame.Rect(40, 520, 210, 54)
@@ -116,6 +131,7 @@ class ElevatorPrototype:
         return self.level.graph
 
     def run(self) -> None:
+        self._running = True
         while True:
             self._handle_events()
             self._draw()
@@ -123,6 +139,20 @@ class ElevatorPrototype:
 
     def _handle_events(self) -> None:
         for event in pygame.event.get():
+            if event.type in (
+                pygame.VIDEORESIZE,
+                getattr(pygame, "WINDOWRESIZED", -1),
+                getattr(pygame, "WINDOWSIZECHANGED", -1),
+            ):
+                size = getattr(event, "size", None)
+                if size is None:
+                    size = (
+                        getattr(event, "w", getattr(event, "x", WINDOW_WIDTH)),
+                        getattr(event, "h", getattr(event, "y", WINDOW_HEIGHT)),
+                    )
+                self._resize_window(*size)
+                continue
+            event = self._to_logical_event(event)
             if event.type == pygame.QUIT:
                 self._request_quit()
                 continue
@@ -268,6 +298,59 @@ class ElevatorPrototype:
                     if rect.collidepoint(event.pos):
                         self._select_floor(floor)
                         break
+
+    def _resize_window(self, width: int, height: int) -> None:
+        self.window = pygame.display.set_mode(
+            (max(WIDTH, int(width)), max(HEIGHT, int(height))),
+            pygame.RESIZABLE,
+        )
+
+    def _content_viewport(self) -> tuple[pygame.Rect, float]:
+        window_width, window_height = self.window.get_size()
+        scale = min(window_width / WIDTH, window_height / HEIGHT)
+        content_width = round(WIDTH * scale)
+        content_height = round(HEIGHT * scale)
+        return (
+            pygame.Rect(
+                (window_width - content_width) // 2,
+                (window_height - content_height) // 2,
+                content_width,
+                content_height,
+            ),
+            scale,
+        )
+
+    def _to_logical_event(self, event: pygame.event.Event) -> pygame.event.Event:
+        if not self._running or not hasattr(event, "pos"):
+            return event
+        viewport, scale = self._content_viewport()
+        position = event.pos
+        if not viewport.collidepoint(position):
+            logical_position = (-1, -1)
+        else:
+            logical_position = (
+                round((position[0] - viewport.x) / scale),
+                round((position[1] - viewport.y) / scale),
+            )
+        attributes = dict(event.dict)
+        attributes["pos"] = logical_position
+        if hasattr(event, "rel"):
+            attributes["rel"] = (
+                round(event.rel[0] / scale),
+                round(event.rel[1] / scale),
+            )
+        return pygame.event.Event(event.type, attributes)
+
+    def _load_menu_background(self) -> pygame.Surface | None:
+        try:
+            return pygame.image.load(self.menu_background_path).convert()
+        except (OSError, pygame.error) as error:
+            if self.menu_background_path.exists():
+                print(
+                    "Aviso: nao foi possivel carregar o fundo do menu "
+                    f"{self.menu_background_path}: {error}"
+                )
+            return None
 
     def _continue_game(self) -> None:
         recommended = self.progress_manager.recommended_level
@@ -809,7 +892,11 @@ class ElevatorPrototype:
         self.message = "Tentativa reiniciada no andar inicial."
 
     def _draw(self) -> None:
-        self.screen.fill(BACKGROUND)
+        main_menu = self.menu.screen is Screen.MAIN_MENU
+        self.screen.fill((0, 0, 0, 0) if main_menu else BACKGROUND)
+        self.window.fill(BACKGROUND)
+        if main_menu:
+            self._draw_menu_background()
         if self.menu.screen is Screen.MAIN_MENU:
             self._draw_main_menu()
         elif self.menu.screen is Screen.LEVEL_SELECT:
@@ -825,6 +912,11 @@ class ElevatorPrototype:
             self._draw_footer()
         if self.quit_confirmation_open:
             self._draw_quit_confirmation()
+        viewport, _ = self._content_viewport()
+        self.window.blit(
+            pygame.transform.smoothscale(self.screen, viewport.size),
+            viewport.topleft,
+        )
         pygame.display.flip()
 
     def _draw_quit_confirmation(self) -> None:
@@ -848,12 +940,12 @@ class ElevatorPrototype:
             self.screen.blit(text, text.get_rect(center=rect.center))
 
     def _draw_main_menu(self) -> None:
-        title = self.title_font.render("FLOOR 13", True, TEXT)
+        title = self.menu_title_font.render("FLOOR 13", True, TEXT)
         subtitle = self.body_font.render(
             "Explore os andares. Descubra a saida.", True, MUTED
         )
-        self.screen.blit(title, title.get_rect(center=(WIDTH // 2, 170)))
-        self.screen.blit(subtitle, subtitle.get_rect(center=(WIDTH // 2, 215)))
+        self.screen.blit(title, (64, 82))
+        self.screen.blit(subtitle, (68, 160))
         labels = (
             (
                 self.main_continue_rect,
@@ -878,8 +970,54 @@ class ElevatorPrototype:
             f"Pontuacao acumulada: {self.saved_progress['total_score']}",
             self.small_font,
             ACCENT,
-            (WIDTH // 2 - 120, 550),
+            (68, 548),
         )
+
+    def _draw_menu_background(self) -> None:
+        if self.menu_background is None:
+            return
+        window_size = self.window.get_size()
+        scaled_background = self._scaled_menu_background
+        if (
+            scaled_background is None
+            or self._scaled_menu_background_size != window_size
+        ):
+            scaled_background = self._cover_image(self.menu_background, window_size)
+            self._scaled_menu_background = scaled_background
+            self._scaled_menu_background_size = window_size
+        overlay = self._menu_background_overlay
+        if (
+            overlay is None
+            or self._menu_background_overlay_size != window_size
+        ):
+            overlay = pygame.Surface(window_size, pygame.SRCALPHA)
+            overlay.fill((8, 11, 18, 145))
+            self._menu_background_overlay = overlay
+            self._menu_background_overlay_size = window_size
+        self.window.blit(scaled_background, (0, 0))
+        self.window.blit(overlay, (0, 0))
+
+    @staticmethod
+    def _cover_image(
+        image: pygame.Surface, target_size: tuple[int, int]
+    ) -> pygame.Surface:
+        target_width, target_height = target_size
+        scale = max(
+            target_width / image.get_width(),
+            target_height / image.get_height(),
+        )
+        scaled_size = (
+            max(target_width, round(image.get_width() * scale)),
+            max(target_height, round(image.get_height() * scale)),
+        )
+        scaled = pygame.transform.smoothscale(image, scaled_size)
+        crop = pygame.Rect(
+            (scaled_size[0] - target_width) // 2,
+            (scaled_size[1] - target_height) // 2,
+            target_width,
+            target_height,
+        )
+        return scaled.subsurface(crop).copy()
 
     def _draw_level_select(self) -> None:
         self._text("SELECIONE UMA FASE", self.title_font, TEXT, (64, 54))

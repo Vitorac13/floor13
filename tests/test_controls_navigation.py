@@ -94,6 +94,68 @@ class ControlsNavigationTests(unittest.TestCase):
         self._post_click(self.app.result_select_rect.center)
         self.assertEqual(self.app.menu.screen, Screen.LEVEL_SELECT)
 
+    def test_window_opens_large_and_resizes_with_a_minimum_logical_size(self) -> None:
+        self.assertEqual(self.app.window.get_size(), (1280, 720))
+        self.assertTrue(self.app.window.get_flags() & pygame.RESIZABLE)
+
+        pygame.event.post(
+            pygame.event.Event(
+                pygame.VIDEORESIZE, {"w": 1440, "h": 900, "size": (1440, 900)}
+            )
+        )
+        self.app._handle_events()
+        self.assertEqual(self.app.window.get_size(), (1440, 900))
+
+        self.app._resize_window(800, 500)
+        self.assertEqual(self.app.window.get_size(), (WIDTH, HEIGHT))
+        self.app._resize_window(1280, 720)
+
+    def test_mouse_coordinates_are_scaled_after_resize(self) -> None:
+        self.app._resize_window(1440, 900)
+        self.app._running = True
+        viewport, scale = self.app._content_viewport()
+        button_center = self.app.main_select_rect.center
+        physical_position = (
+            viewport.x + round(button_center[0] * scale),
+            viewport.y + round(button_center[1] * scale),
+        )
+        event = pygame.event.Event(
+            pygame.MOUSEBUTTONDOWN,
+            {"button": 1, "pos": physical_position},
+        )
+        pygame.event.clear()
+        pygame.event.post(event)
+        self.app._handle_events()
+
+        self.assertEqual(self.app.menu.screen, Screen.LEVEL_SELECT)
+        self.app._running = False
+
+    def test_menu_background_is_optional_and_images_are_center_cropped(self) -> None:
+        self.assertIsNone(self.app.menu_background)
+        self.app._draw()
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = Path(directory) / "menu_background.png"
+            image = pygame.Surface((4, 2))
+            image.fill((20, 40, 60))
+            pygame.image.save(image, image_path)
+            self.app.menu_background_path = image_path
+
+            loaded = self.app._load_menu_background()
+            covered = self.app._cover_image(loaded, (960, 640))
+
+            self.assertEqual(covered.get_size(), (960, 640))
+            self.assertEqual(covered.get_at((480, 320))[:3], (20, 40, 60))
+            self.app.menu_background = loaded
+            self.app._draw()
+            self.assertEqual(
+                self.app._scaled_menu_background_size, self.app.window.get_size()
+            )
+            self.app._resize_window(1400, 900)
+            self.app._draw()
+            self.assertEqual(
+                self.app._scaled_menu_background_size, self.app.window.get_size()
+            )
+
     def test_mouse_wheel_only_scrolls_the_level_list(self) -> None:
         self._start_phase("phase-01")
         pygame.event.post(
