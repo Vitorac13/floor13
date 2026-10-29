@@ -66,6 +66,19 @@ class ProgressManager:
         if next_level is not None:
             self.unlocked_levels.add(next_level)
 
+    def update_levels(self, level_ids: Iterable[str]) -> None:
+        updated_ids = tuple(level_ids)
+        if (
+            any(not isinstance(level_id, str) or not level_id for level_id in updated_ids)
+            or len(updated_ids) != len(set(updated_ids))
+        ):
+            raise ValueError("A lista de identificadores de fase e invalida.")
+        self._legacy_numbers = False
+        self.level_ids = updated_ids
+        self.phase_count = len(updated_ids)
+        self.completed_levels.intersection_update(updated_ids)
+        self._refresh_unlocked()
+
     def can_start(self, level: LevelKey) -> bool:
         return self._valid_level(level) and (
             level in self.completed_levels or level in self.unlocked_levels

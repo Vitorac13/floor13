@@ -1,0 +1,66 @@
+{
+  "id": "phase-09",
+  "number": 9,
+  "name": "Caminho barato",
+  "graph": {
+    "vertices": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "edges": [
+      [
+        2,
+        1,
+        3
+      ],
+      [
+        1,
+        3,
+        3
+      ],
+      [
+        3,
+        5,
+        2
+      ],
+      [
+        4,
+        2,
+        1
+      ],
+      [
+        4,
+        5,
+        2
+      ]
+    ]
+  },
+  "start_floor": 1,
+  "exit_floor": 5,
+  "items": [],
+  "exit_requirements": {
+    "keys": [],
+    "challenges": []
+  },
+  "connection_requirements": [],
+  "challenge": {
+    "type": "economic",
+    "destination_floor": 5
+  },
+  "optional_objectives": [
+    {
+      "id": "objective-1",
+      "name": "Objetivo 1",
+      "description": "Visite o andar indicado.",
+      "type": "visit_floor",
+      "floor": 3,
+      "reward": 100
+    }
+  ],
+  "rewards": {
+    "completion": 300
+  }
+}

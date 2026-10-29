@@ -736,7 +736,18 @@ Na janela:
 - Nas fases 2 a 5, `R` reinicia a tentativa. Os desafios hamiltoniano,
   econômico, euleriano e de ida e retorno mantêm suas regras próprias.
 - Após vencer, a tela de resultado mostra pontuação, itens, objetivos,
-  deslocamentos e a próxima fase desbloqueada. `Esc` fecha o jogo.
+  deslocamentos e a próxima fase desbloqueada. Há opções para jogar novamente,
+  avançar, selecionar fases ou voltar ao menu. No menu principal, `Esc` pede
+  confirmação antes de fechar; em telas secundárias, retorna ao menu anterior.
+- **Editor de fases** abre o editor visual. Clique em um campo para posicionar
+  o cursor; digite normalmente, use `Ctrl+A` para substituir o conteúdo e
+  `Backspace`/`Delete` para apagar. O seletor de desafio mostra os tipos
+  registrados e seus parâmetros. A exclusão de um andar renumera os demais e
+  atualiza as referências. No desafio Economic, abra a aba **Aresta**, ative
+  **Editar custo das conexões** e selecione uma aresta para editar seu custo.
+- Exportar um JSON válido para `levels/` atualiza a seleção de fases sem
+  reiniciar o jogo. Quando houver mais de seis fases, a seleção mostra o
+  intervalo visível e uma barra de rolagem; use a roda do mouse para navegar.
 
 ## Arquitetura e configuração das fases
 

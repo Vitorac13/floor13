@@ -13,7 +13,7 @@ from game_state import GameState
 from graph import Graph
 from level import ItemKind, Level, OptionalObjective
 from level_editor import LevelEditor
-from level_manager import LevelManager
+from level_manager import DEFAULT_LEVELS_DIR, LevelManager
 from challenge_registry import ChallengeRegistry, ChallengeState
 from systems.item_manager import ItemProgress
 from systems.menu_manager import MenuManager, Screen
@@ -38,7 +38,8 @@ class ElevatorPrototype:
         self, save_path: str | None = None, levels_dir: str | Path | None = None
     ) -> None:
         pygame.init()
-        discovery = LevelManager.discover_levels(levels_dir)
+        self.levels_dir = Path(levels_dir) if levels_dir is not None else DEFAULT_LEVELS_DIR
+        discovery = LevelManager.discover_levels(self.levels_dir)
         self.phase_levels = discovery.levels
         self.phase_diagnostics = discovery.diagnostics
         self.levels_by_id = {level.identifier: level for level in self.phase_levels}
@@ -64,7 +65,7 @@ class ElevatorPrototype:
         self.progress_manager.restore(self.saved_progress)
         self.score_manager = ScoreManager()
         self.menu = MenuManager()
-        self.level_editor = LevelEditor()
+        self.level_editor = LevelEditor(self.levels_dir, self._refresh_levels)
         self.item_progress: ItemProgress | None = None
         self.level_select_offset = 0
         self.attempt_result: AttemptResult | None = None
@@ -93,10 +94,14 @@ class ElevatorPrototype:
         self.main_exit_rect = pygame.Rect(330, 448, 300, 58)
         self.level_rects: dict[str, pygame.Rect] = {}
         self.level_back_rect = pygame.Rect(64, 570, 190, 48)
-        self.result_continue_rect = pygame.Rect(110, 520, 230, 54)
-        self.result_select_rect = pygame.Rect(365, 520, 230, 54)
-        self.result_menu_rect = pygame.Rect(620, 520, 230, 54)
+        self.result_replay_rect = pygame.Rect(40, 520, 210, 54)
+        self.result_continue_rect = pygame.Rect(260, 520, 210, 54)
+        self.result_select_rect = pygame.Rect(480, 520, 210, 54)
+        self.result_menu_rect = pygame.Rect(700, 520, 210, 54)
         self.game_menu_rect = pygame.Rect(786, 40, 110, 40)
+        self.quit_confirmation_open = False
+        self.quit_confirm_rect = pygame.Rect(280, 345, 180, 52)
+        self.quit_cancel_rect = pygame.Rect(500, 345, 180, 52)
 
     @property
     def current_floor(self) -> int:
@@ -119,16 +124,24 @@ class ElevatorPrototype:
     def _handle_events(self) -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                pygame.quit()
-                sys.exit()
+                self._request_quit()
+                continue
+            if self.quit_confirmation_open:
+                self._handle_quit_confirmation(event)
+                continue
             if self.menu.screen is Screen.LEVEL_EDITOR:
                 if self.level_editor.handle_event(event):
                     self._return_to_main_menu()
                 continue
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    pygame.quit()
-                    sys.exit()
+                    if self.menu.screen is Screen.MAIN_MENU:
+                        self._request_quit()
+                    elif self.menu.screen is Screen.LEVEL_SELECT:
+                        self.menu.show_main_menu()
+                    else:
+                        self._return_to_main_menu()
+                    continue
                 if self.menu.screen is Screen.MAIN_MENU:
                     if event.key == pygame.K_RETURN:
                         self._continue_game()
@@ -196,8 +209,7 @@ class ElevatorPrototype:
                     elif self.main_editor_rect.collidepoint(event.pos):
                         self.menu.show_level_editor()
                     elif self.main_exit_rect.collidepoint(event.pos):
-                        pygame.quit()
-                        sys.exit()
+                        self._request_quit()
                     continue
                 if self.menu.screen is Screen.LEVEL_SELECT:
                     if self.level_back_rect.collidepoint(event.pos):
@@ -209,8 +221,13 @@ class ElevatorPrototype:
                             break
                     continue
                 if self.menu.screen is Screen.RESULT:
-                    if self.result_continue_rect.collidepoint(event.pos):
+                    if (
+                        self.progress_manager.recommended_level is not None
+                        and self.result_continue_rect.collidepoint(event.pos)
+                    ):
                         self._continue_after_result()
+                    elif self.result_replay_rect.collidepoint(event.pos):
+                        self._replay_result()
                     elif self.result_select_rect.collidepoint(event.pos):
                         self._return_to_level_select()
                     elif self.result_menu_rect.collidepoint(event.pos):
@@ -369,9 +386,55 @@ class ElevatorPrototype:
         self._discard_active_phase()
         self.menu.show_level_select()
 
+    def _refresh_levels(self, exported_path: Path) -> None:
+        if exported_path.parent.resolve() != self.levels_dir.resolve():
+            return
+        discovery = LevelManager.discover_levels(self.levels_dir)
+        levels = discovery.levels
+        self.phase_levels = levels
+        self.phase_diagnostics = discovery.diagnostics
+        self.levels_by_id = {level.identifier: level for level in levels}
+        self.levels_by_number = {level.number: level for level in levels}
+        self.save_manager.level_numbers = {
+            level.identifier: level.number for level in levels
+        }
+        self.save_manager.number_ids = {
+            level.number: level.identifier for level in levels
+        }
+        level_ids = tuple(level.identifier for level in levels)
+        self.progress_manager.update_levels(level_ids)
+        scores = self.saved_progress.setdefault("level_scores", {})
+        for identifier in level_ids:
+            scores.setdefault(identifier, 0)
+        self.saved_progress.update(self.progress_manager.to_dict())
+        self.level_select_offset = min(
+            self.level_select_offset, max(0, len(levels) - 6)
+        )
+
     def _replay_result(self) -> None:
         if self.menu.result_level is not None:
             self._start_phase(self.menu.result_level)
+
+    def _request_quit(self) -> None:
+        self.quit_confirmation_open = True
+
+    def _handle_quit_confirmation(self, event: pygame.event.Event) -> None:
+        if event.type == pygame.KEYDOWN:
+            if event.key in (pygame.K_ESCAPE, pygame.K_n):
+                self.quit_confirmation_open = False
+            elif event.key in (pygame.K_RETURN, pygame.K_y):
+                self._exit_game()
+            return
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.quit_confirm_rect.collidepoint(event.pos):
+                self._exit_game()
+            if self.quit_cancel_rect.collidepoint(event.pos):
+                self.quit_confirmation_open = False
+
+    def _exit_game(self) -> None:
+        self.quit_confirmation_open = False
+        pygame.quit()
+        sys.exit()
 
     def _current_objectives(self) -> tuple[OptionalObjective, ...]:
         if self.level is None or self.active_state is None:
@@ -760,7 +823,29 @@ class ElevatorPrototype:
             self._draw_floor_panel()
             self._draw_destination_panel()
             self._draw_footer()
+        if self.quit_confirmation_open:
+            self._draw_quit_confirmation()
         pygame.display.flip()
+
+    def _draw_quit_confirmation(self) -> None:
+        overlay = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 185))
+        self.screen.blit(overlay, (0, 0))
+        dialog = pygame.Rect(220, 230, 520, 200)
+        pygame.draw.rect(self.screen, PANEL, dialog, border_radius=12)
+        pygame.draw.rect(self.screen, ACCENT, dialog, width=2, border_radius=12)
+        prompt = self.body_font.render(
+            "Tem certeza de que deseja sair do Floor 13?", True, TEXT
+        )
+        self.screen.blit(prompt, prompt.get_rect(center=(dialog.centerx, 285)))
+        for rect, label in (
+            (self.quit_confirm_rect, "SIM, SAIR"),
+            (self.quit_cancel_rect, "CANCELAR"),
+        ):
+            pygame.draw.rect(self.screen, PANEL_LIGHT, rect, border_radius=8)
+            pygame.draw.rect(self.screen, ACCENT_DARK, rect, width=2, border_radius=8)
+            text = self.small_font.render(label, True, TEXT)
+            self.screen.blit(text, text.get_rect(center=rect.center))
 
     def _draw_main_menu(self) -> None:
         title = self.title_font.render("FLOOR 13", True, TEXT)
@@ -798,10 +883,12 @@ class ElevatorPrototype:
 
     def _draw_level_select(self) -> None:
         self._text("SELECIONE UMA FASE", self.title_font, TEXT, (64, 54))
+        total = len(self.phase_levels)
+        range_label = self._level_select_range_label()
         self._text(
-            "Fases bloqueadas serao liberadas ao concluir a anterior. Use a roda do mouse para navegar.",
+            range_label,
             self.small_font,
-            MUTED,
+            ACCENT if total > 6 else MUTED,
             (66, 104),
         )
         self.level_rects.clear()
@@ -845,6 +932,22 @@ class ElevatorPrototype:
                 ACCENT if completed or unlocked else MUTED,
                 (rect.x + 18, rect.y + 36),
             )
+        if total > 6:
+            track = pygame.Rect(830, 150, 8, 378)
+            pygame.draw.rect(self.screen, PANEL_LIGHT, track, border_radius=4)
+            thumb_height = max(36, round(track.height * min(1.0, 6 / total)))
+            scroll_range = total - 6
+            thumb_top = track.top + round(
+                (track.height - thumb_height)
+                * self.level_select_offset
+                / scroll_range
+            )
+            pygame.draw.rect(
+                self.screen,
+                ACCENT,
+                pygame.Rect(track.x, thumb_top, track.width, thumb_height),
+                border_radius=4,
+            )
         if self.phase_diagnostics:
             error_count = sum(
                 diagnostic.severity == "error"
@@ -870,6 +973,15 @@ class ElevatorPrototype:
             self.screen, PANEL, self.level_back_rect, border_radius=10
         )
         self._text("VOLTAR", self.body_font, TEXT, (self.level_back_rect.x + 48, 582))
+
+    def _level_select_range_label(self) -> str:
+        total = len(self.phase_levels)
+        first = self.level_select_offset + 1 if total else 0
+        last = min(self.level_select_offset + 6, total)
+        label = f"Fases {first}-{last} de {total}"
+        if total > 6:
+            label += "  |  Role para baixo para ver mais fases"
+        return label
 
     def _draw_result(self) -> None:
         level_id = self.menu.result_level
@@ -953,7 +1065,7 @@ class ElevatorPrototype:
             next_text = "Todo o conteudo disponivel foi finalizado."
         self._text(next_text, self.body_font, ACCENT, (66, 386))
 
-        buttons = []
+        buttons = [(self.result_replay_rect, "JOGAR NOVAMENTE")]
         if recommended is not None:
             buttons.append((self.result_continue_rect, "PROXIMA FASE"))
         buttons.extend(

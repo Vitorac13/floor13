@@ -6,7 +6,7 @@ import copy
 import json
 import math
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pygame
 
@@ -23,10 +23,17 @@ ACCENT = (100, 208, 190)
 ACCENT_DARK = (43, 125, 117)
 WARNING = (244, 190, 105)
 ERROR = (240, 118, 118)
+CHALLENGE_LABELS = {
+    "collect_and_exit": "Coleta e saida",
+    "hamilton": "Hamilton",
+    "economic": "Economic",
+    "euler": "Euler",
+    "final": "Desafio final",
+}
 
 
-def new_level_config() -> dict[str, Any]:
-    existing_levels = LevelManager.discover_levels().levels
+def new_level_config(levels_dir: str | Path | None = None) -> dict[str, Any]:
+    existing_levels = LevelManager.discover_levels(levels_dir).levels
     number = max((level.number for level in existing_levels), default=0) + 1
     existing_ids = {level.identifier for level in existing_levels}
     identifier = f"phase-{number:02d}"
@@ -52,16 +59,23 @@ def new_level_config() -> dict[str, Any]:
 class LevelEditor:
     """Estado e interface do editor; usa o mesmo validador/carregador do jogo."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        levels_dir: str | Path | None = None,
+        on_export: Callable[[Path], None] | None = None,
+    ) -> None:
         if not pygame.font.get_init():
             pygame.font.init()
         self._fonts = {
             size: pygame.font.Font(None, size)
             for size in (16, 18, 19, 20, 21, 22, 23, 24, 25)
         }
-        self.config = new_level_config()
+        self.levels_dir = Path(levels_dir) if levels_dir is not None else DEFAULT_LEVELS_DIR
+        self.config = new_level_config(self.levels_dir)
+        self.on_export = on_export
         self.positions: dict[int, tuple[int, int]] = {}
         self.active_path: Path | None = None
+        self.active_identifier: str | None = None
         self.selected_vertex: int | None = 1
         self.selected_item: int | None = None
         self.item_list_offset = 0
@@ -75,8 +89,16 @@ class LevelEditor:
         self.status_error = False
         self.focused_field: str | None = None
         self.field_buffer = ""
+        self.cursor_index = 0
+        self.selection_anchor: int | None = None
+        self.text_scroll_px = 0
+        self.dropdown_open = False
+        self.challenge_parameter_cache: dict[str, dict[str, Any]] = {}
+        self.selected_edge: tuple[int, int] | None = None
+        self._edge_rects: list[tuple[tuple[int, int], pygame.Rect]] = []
         self.path_dialog: str | None = None
         self.path_buffer = ""
+        self.path_cursor = 0
         self.pending_overwrite: Path | None = None
         self._back_requested = False
         self._buttons: dict[str, pygame.Rect] = {}
@@ -85,16 +107,26 @@ class LevelEditor:
         self._objective_rects: list[tuple[int, pygame.Rect]] = []
         self.canvas_rect = pygame.Rect(20, 112, 600, 450)
         self._layout_positions()
+        self._cache_current_challenge_parameters()
 
     def _font(self, size: int) -> pygame.font.Font:
         return self._fonts[size]
+
+    def _cache_current_challenge_parameters(self) -> None:
+        challenge = self.config.get("challenge")
+        if isinstance(challenge, dict) and isinstance(challenge.get("type"), str):
+            self.challenge_parameter_cache[challenge["type"]] = {
+                key: copy.deepcopy(value)
+                for key, value in challenge.items()
+                if key != "type"
+            }
 
     @property
     def vertices(self) -> list[int]:
         return self.config["graph"]["vertices"]
 
     @property
-    def edges(self) -> list[list[int]]:
+    def edges(self) -> list[list[Any]]:
         return self.config["graph"]["edges"]
 
     @property
@@ -121,8 +153,9 @@ class LevelEditor:
             )
 
     def new_level(self) -> None:
-        self.config = new_level_config()
+        self.config = new_level_config(self.levels_dir)
         self.active_path = None
+        self.active_identifier = None
         self.selected_vertex = 1
         self.selected_item = None
         self.item_list_offset = 0
@@ -132,6 +165,10 @@ class LevelEditor:
         self.edge_origin = None
         self.mode = "select"
         self.focused_field = None
+        self.dropdown_open = False
+        self.selected_edge = None
+        self.challenge_parameter_cache = {}
+        self._cache_current_challenge_parameters()
         self.path_dialog = None
         self.pending_overwrite = None
         self._layout_positions()
@@ -149,9 +186,15 @@ class LevelEditor:
         self.selected_objective = None
         self.objective_list_offset = 0
         self.active_path = source
+        identifier = self.config.get("id")
+        self.active_identifier = identifier if isinstance(identifier, str) else None
         self.edge_origin = None
         self.mode = "select"
         self.focused_field = None
+        self.dropdown_open = False
+        self.selected_edge = None
+        self.challenge_parameter_cache = {}
+        self._cache_current_challenge_parameters()
         self.path_dialog = None
         self.pending_overwrite = None
         self._layout_positions()
@@ -185,12 +228,11 @@ class LevelEditor:
     def export_file(self, path: str | Path, overwrite: bool = False) -> Path:
         self.validate()
         destination = Path(path).expanduser()
-        if destination.parent.resolve() == DEFAULT_LEVELS_DIR.resolve():
-            for existing in LevelManager.discover_levels().levels:
+        if destination.parent.resolve() == self.levels_dir.resolve():
+            for existing in LevelManager.discover_levels(self.levels_dir).levels:
                 if (
                     self.active_path is not None
                     and self.active_path.resolve() == destination.resolve()
-                    and existing.identifier == self.config.get("id")
                 ):
                     continue
                 if existing.identifier == self.config.get("id"):
@@ -211,11 +253,17 @@ class LevelEditor:
         except OSError as error:
             raise ValueError(f"Nao foi possivel exportar a fase: {error}") from error
         self.active_path = destination
+        identifier = self.config.get("id")
+        self.active_identifier = identifier if isinstance(identifier, str) else None
+        if self.on_export is not None:
+            self.on_export(destination)
         self._set_status(f"Fase exportada para {destination}.")
         return destination
 
     def add_vertex(self, position: tuple[int, int] | None = None) -> int:
-        vertex = max(self.vertices, default=0) + 1
+        vertex = len(self.vertices) + 1
+        while vertex in self.vertices:
+            vertex += 1
         self.vertices.append(vertex)
         if position is None:
             position = self.canvas_rect.center
@@ -237,13 +285,14 @@ class LevelEditor:
             raise ValueError("Um andar nao pode se conectar a si mesmo.")
         if any(set(edge[:2]) == {first, second} for edge in self.edges):
             raise ValueError(f"A conexao entre {first} e {second} ja existe.")
-        self.edges.append([first, second])
+        self.edges.append([first, second, 1] if self._is_economic() else [first, second])
         self._set_status(f"Conexao criada: {first} - {second}.")
 
     def remove_edge(self, first: int, second: int) -> None:
         for index, edge in enumerate(self.edges):
             if set(edge[:2]) == {first, second}:
                 del self.edges[index]
+                self.selected_edge = None
                 self._set_status(f"Conexao removida: {first} - {second}.")
                 return
         raise ValueError("A conexao selecionada nao existe.")
@@ -251,25 +300,134 @@ class LevelEditor:
     def remove_vertex(self, vertex: int) -> None:
         if vertex not in self.vertices:
             raise ValueError(f"Andar inexistente: {vertex}.")
-        self.vertices.remove(vertex)
-        self.config["graph"]["edges"] = [
-            edge for edge in self.edges if vertex not in edge[:2]
+        if len(self.vertices) == 1:
+            raise ValueError("A fase deve manter ao menos um andar.")
+        previous_vertices = sorted(self.vertices)
+        retained_vertices = [floor for floor in previous_vertices if floor != vertex]
+        remapping = {
+            old_floor: new_floor
+            for new_floor, old_floor in enumerate(retained_vertices, start=1)
+        }
+
+        def remap_floor(floor: Any) -> int:
+            if floor in remapping:
+                return remapping[floor]
+            if not remapping:
+                raise ValueError("A fase deve manter ao menos um andar.")
+            if type(floor) is not int:
+                raise ValueError(f"Referencia de andar invalida: {floor!r}.")
+            nearest_floor = min(
+                retained_vertices,
+                key=lambda candidate: (abs(candidate - floor), candidate),
+            )
+            return remapping[nearest_floor]
+
+        new_edges = [
+            [remapping[edge[0]], remapping[edge[1]], *edge[2:]]
+            for edge in self.edges
+            if vertex not in edge[:2]
         ]
         removed_items = [
             item for item in self.items if item.get("floor") == vertex
         ]
-        self._remove_item_references(
-            {item.get("id") for item in removed_items}, removed_floor=vertex
-        )
-        self.config["items"] = [
+        removed_item_ids = {item.get("id") for item in removed_items}
+        new_items = [
             item for item in self.items if item.get("floor") != vertex
         ]
-        self.positions.pop(vertex, None)
-        if self.selected_vertex == vertex:
-            self.selected_vertex = self.vertices[0] if self.vertices else None
+        new_items = copy.deepcopy(new_items)
+        for item in new_items:
+            item["floor"] = remap_floor(item["floor"])
+
+        new_start = remap_floor(self.config.get("start_floor"))
+        new_exit = remap_floor(self.config.get("exit_floor"))
+
+        challenge = copy.deepcopy(self.config.get("challenge"))
+        if isinstance(challenge, dict):
+            for key in ("destination_floor", "end_floor", "return_floor"):
+                if key in challenge:
+                    challenge[key] = remap_floor(challenge[key])
+            reference_trail = challenge.get("reference_trail")
+            if isinstance(reference_trail, list):
+                challenge["reference_trail"] = [
+                    remapping[floor]
+                    for floor in reference_trail
+                    if floor in remapping
+                ]
+
+        requirements = self.config.get("connection_requirements", [])
+        new_requirements = copy.deepcopy(requirements)
+        if isinstance(requirements, list):
+            new_requirements = []
+            for requirement in requirements:
+                if not isinstance(requirement, dict):
+                    new_requirements.append(copy.deepcopy(requirement))
+                    continue
+                first = requirement.get("from")
+                second = requirement.get("to")
+                if vertex in (first, second):
+                    continue
+                remapped_requirement = copy.deepcopy(requirement)
+                if "from" in remapped_requirement:
+                    remapped_requirement["from"] = remap_floor(first)
+                if "to" in remapped_requirement:
+                    remapped_requirement["to"] = remap_floor(second)
+                keys = remapped_requirement.get("keys")
+                if isinstance(keys, list):
+                    remapped_requirement["keys"] = [
+                        key_id for key_id in keys if key_id not in removed_item_ids
+                    ]
+                new_requirements.append(remapped_requirement)
+
+        new_objectives = copy.deepcopy(self.objectives)
+        for objective in new_objectives:
+            if isinstance(objective, dict) and objective.get("floor") is not None:
+                objective["floor"] = remap_floor(objective["floor"])
+
+        new_exit_requirements = copy.deepcopy(
+            self.config.get("exit_requirements", {})
+        )
+        if (
+            isinstance(new_exit_requirements, dict)
+            and isinstance(new_exit_requirements.get("keys"), list)
+        ):
+            new_exit_requirements["keys"] = [
+                key_id
+                for key_id in new_exit_requirements["keys"]
+                if key_id not in removed_item_ids
+            ]
+
+        graph = self.config["graph"]
+        graph["vertices"] = list(remapping.values())
+        graph["edges"] = new_edges
+        self.config["items"] = new_items
+        self.config["start_floor"] = new_start
+        self.config["exit_floor"] = new_exit
+        self.config["challenge"] = challenge
+        self.config["connection_requirements"] = new_requirements
+        self.config["optional_objectives"] = new_objectives
+        self.config["exit_requirements"] = new_exit_requirements
+        self._cache_current_challenge_parameters()
+
+        old_positions = self.positions.copy()
+        self.positions = {
+            remapping[old_floor]: old_positions[old_floor]
+            for old_floor in retained_vertices
+            if old_floor in old_positions
+        }
+        self.vertices.sort()
+        self.edges.sort(key=lambda edge: (edge[0], edge[1]))
+        self.selected_vertex = (
+            remapping.get(self.selected_vertex)
+            if self.selected_vertex != vertex
+            else (self.vertices[0] if self.vertices else None)
+        )
+        self.selected_edge = None
+        self.edge_origin = None
         self.selected_item = None
         suffix = f" {len(removed_items)} item(ns) do andar tambem removido(s)." if removed_items else ""
-        self._set_status(f"Andar {vertex} e suas conexoes foram removidos.{suffix}")
+        self._set_status(
+            f"Andar {vertex} removido; os restantes foram renumerados.{suffix}"
+        )
 
     def add_item(self) -> int:
         if not self.vertices:
@@ -437,13 +595,33 @@ class LevelEditor:
             first, second = edge[:2]
             if first not in self.positions or second not in self.positions:
                 continue
+            selected = (
+                self.selected_edge is not None
+                and {first, second} == set(self.selected_edge)
+            )
             pygame.draw.line(
                 screen,
-                MUTED,
+                WARNING if selected else ACCENT_DARK if self._is_economic() else MUTED,
                 self.positions[first],
                 self.positions[second],
-                3,
+                5 if selected else 3,
             )
+            if self._is_economic():
+                midpoint = (
+                    (self.positions[first][0] + self.positions[second][0]) // 2,
+                    (self.positions[first][1] + self.positions[second][1]) // 2,
+                )
+                cost = edge[2] if len(edge) > 2 else 1
+                cost_text = f"{cost:g}" if isinstance(cost, (int, float)) else str(cost)
+                label = self._font(18).render(cost_text, True, TEXT)
+                background = pygame.Rect(
+                    midpoint[0] - 14,
+                    midpoint[1] - 11,
+                    label.get_width() + 8,
+                    label.get_height() + 4,
+                )
+                pygame.draw.rect(screen, BACKGROUND, background, border_radius=4)
+                screen.blit(label, label.get_rect(center=background.center))
         for vertex in self.vertices:
             position = self.positions.get(vertex)
             if position is None:
@@ -464,6 +642,9 @@ class LevelEditor:
         if self.edge_origin is not None:
             note = font.render(f"Selecione o segundo andar (origem {self.edge_origin}).", True, WARNING)
             screen.blit(note, (self.canvas_rect.x + 12, self.canvas_rect.y + 10))
+        if self._is_economic():
+            hint = self._font(18).render("Clique em uma aresta para editar seu custo.", True, ACCENT)
+            screen.blit(hint, (self.canvas_rect.x + 12, self.canvas_rect.y + 12))
 
     def _draw_tools(self, screen: pygame.Surface) -> None:
         font = self._font(20)
@@ -480,15 +661,19 @@ class LevelEditor:
 
     def _draw_sidebar(self, screen: pygame.Surface) -> None:
         font = self._font(20)
-        tab_names = (
+        tab_names = [
             ("phase", "Fase"),
             ("floor", "Andar"),
             ("items", "Itens"),
             ("exit", "Saida"),
             ("objectives", "Objet."),
-        )
+        ]
+        if self._is_economic():
+            tab_names.append(("edge", "Aresta"))
+        tab_width = 50 if len(tab_names) == 6 else 59
+        tab_step = 50 if len(tab_names) == 6 else 60
         for index, (key, label) in enumerate(tab_names):
-            rect = pygame.Rect(640 + index * 60, 80, 59, 26)
+            rect = pygame.Rect(640 + index * tab_step, 80, tab_width, 26)
             self._button(screen, f"tab:{key}", label, rect, self._font(18), active=self.tab == key)
         pygame.draw.rect(screen, PANEL, pygame.Rect(640, 112, 300, 490), border_radius=8)
         pygame.draw.rect(screen, PANEL_LIGHT, pygame.Rect(640, 112, 300, 490), width=2, border_radius=8)
@@ -500,28 +685,194 @@ class LevelEditor:
             self._draw_items_tab(screen)
         elif self.tab == "exit":
             self._draw_exit_tab(screen)
-        else:
+        elif self.tab == "objectives":
             self._draw_objectives_tab(screen)
+        else:
+            self._draw_edge_tab(screen)
 
     def _draw_phase_tab(self, screen: pygame.Surface) -> None:
         fields = (
             ("id", "ID"),
             ("number", "Numero"),
             ("name", "Nome"),
-            ("challenge_type", "Desafio"),
             ("completion", "Pontos conclusao"),
         )
         for index, (key, label) in enumerate(fields):
-            self._draw_field(screen, key, label, pygame.Rect(652, 128 + index * 52, 276, 42))
-        self._draw_json_button(
+            self._draw_field(screen, key, label, pygame.Rect(652, 128 + index * 48, 276, 40))
+        challenge = self.config.get("challenge", {})
+        current_type = challenge.get("type") if isinstance(challenge, dict) else ""
+        label = CHALLENGE_LABELS.get(current_type, str(current_type))
+        combo_rect = pygame.Rect(652, 326, 276, 34)
+        self._button(
             screen,
-            "challenge_parameters",
-            "Parametros do desafio",
-            pygame.Rect(652, 394, 276, 60),
+            "challenge_combo",
+            f"Desafio: {label}  v",
+            combo_rect,
+            self._font(19),
+            active=self.dropdown_open,
         )
-        known = ", ".join(sorted(ChallengeRegistry.types()))
-        note = self._font(18).render(f"Tipos: {known}", True, MUTED)
-        screen.blit(note, (652, 470))
+        self._draw_challenge_parameters(screen, 374)
+        if self.dropdown_open:
+            for index, challenge_type in enumerate(self._challenge_types()):
+                rect = pygame.Rect(652, 361 + index * 30, 276, 28)
+                self._button(
+                    screen,
+                    f"challenge:{challenge_type}",
+                    CHALLENGE_LABELS.get(challenge_type, challenge_type),
+                    rect,
+                    self._font(18),
+                    active=challenge_type == current_type,
+                )
+
+    def _draw_challenge_parameters(self, screen: pygame.Surface, top: int) -> None:
+        challenge = self.config.get("challenge", {})
+        challenge_type = challenge.get("type") if isinstance(challenge, dict) else None
+        parameter_fields = {
+            "hamilton": (("end_floor", "Andar final"),),
+            "economic": (("destination_floor", "Andar destino"),),
+            "euler": (("reference_trail", "Trilha de referencia"),),
+            "final": (
+                ("destination_floor", "Andar destino"),
+                ("return_floor", "Andar de retorno"),
+            ),
+        }.get(challenge_type, ())
+        if not parameter_fields:
+            screen.blit(self._font(18).render("Sem parametros adicionais.", True, MUTED), (652, top + 8))
+            return
+        for index, (key, label) in enumerate(parameter_fields):
+            self._draw_field(
+                screen,
+                f"challenge_param:{key}",
+                label,
+                pygame.Rect(652, top + index * 54, 276, 44),
+                challenge=challenge,
+            )
+
+    def _challenge_types(self) -> tuple[str, ...]:
+        preferred = ("collect_and_exit", "hamilton", "economic", "euler", "final")
+        supported = ChallengeRegistry.types()
+        return tuple(
+            challenge_type
+            for challenge_type in preferred
+            if challenge_type in supported
+        ) + tuple(sorted(supported - set(preferred)))
+
+    def _is_economic(self) -> bool:
+        challenge = self.config.get("challenge", {})
+        return isinstance(challenge, dict) and challenge.get("type") == "economic"
+
+    def _set_challenge_type(self, challenge_type: str) -> None:
+        if challenge_type not in ChallengeRegistry.types():
+            raise ValueError(f"Tipo de desafio desconhecido: {challenge_type!r}.")
+        current = self.config.get("challenge", {})
+        current_type = current.get("type") if isinstance(current, dict) else None
+        current_parameters = (
+            {key: copy.deepcopy(value) for key, value in current.items() if key != "type"}
+            if isinstance(current, dict)
+            else {}
+        )
+        if isinstance(current_type, str):
+            self.challenge_parameter_cache[current_type] = current_parameters
+        previous_completion_id = (
+            ChallengeRegistry.completion_id(current_type)
+            if isinstance(current_type, str)
+            and current_type in ChallengeRegistry.types()
+            else None
+        )
+        parameters = copy.deepcopy(
+            self.challenge_parameter_cache.get(challenge_type, {})
+        )
+        allowed = ChallengeRegistry.allowed_fields(challenge_type) - {"type"}
+        parameters = {
+            key: value for key, value in parameters.items() if key in allowed
+        }
+        for key, value in current_parameters.items():
+            if key in allowed:
+                parameters[key] = value
+        defaults = {
+            "end_floor": self.config.get("exit_floor"),
+            "destination_floor": self.config.get("exit_floor"),
+            "return_floor": self.config.get("start_floor"),
+            "reference_trail": [],
+        }
+        for key in allowed:
+            if key in defaults:
+                parameters.setdefault(key, defaults[key])
+        self.config["challenge"] = {"type": challenge_type, **parameters}
+        self.challenge_parameter_cache[challenge_type] = copy.deepcopy(parameters)
+        if previous_completion_id is not None:
+            requirements = self.config.get("exit_requirements")
+            if (
+                isinstance(requirements, dict)
+                and isinstance(requirements.get("challenges"), list)
+                and previous_completion_id in requirements["challenges"]
+            ):
+                requirements["challenges"].remove(previous_completion_id)
+                new_completion_id = ChallengeRegistry.completion_id(challenge_type)
+                if new_completion_id not in requirements["challenges"]:
+                    requirements["challenges"].append(new_completion_id)
+        if challenge_type == "economic":
+            for edge in self.edges:
+                if len(edge) == 2:
+                    edge.append(1)
+        elif self.mode == "edit_cost":
+            self.mode = "select"
+        self.dropdown_open = False
+        self.selected_edge = None
+        self._set_status(
+            f"Desafio selecionado: {CHALLENGE_LABELS.get(challenge_type, challenge_type)}. "
+            "Os parametros anteriores permanecem disponiveis ao voltar ao tipo."
+        )
+
+    def _edge_config(self, endpoints: tuple[int, int]) -> list[Any]:
+        for edge in self.edges:
+            if len(edge) >= 2 and {edge[0], edge[1]} == set(endpoints):
+                return edge
+        raise ValueError(f"A conexao {endpoints[0]}-{endpoints[1]} nao existe.")
+
+    def _set_edge_cost(self, endpoints: tuple[int, int], value: str) -> None:
+        try:
+            cost = float(value)
+        except ValueError as error:
+            raise ValueError("O custo deve ser um numero valido.") from error
+        if not math.isfinite(cost) or cost <= 0:
+            raise ValueError("O custo da conexao deve ser finito e positivo.")
+        edge = self._edge_config(endpoints)
+        if len(edge) == 2:
+            edge.append(cost)
+        else:
+            edge[2] = int(cost) if cost.is_integer() else cost
+        self._set_status(f"Custo atualizado: {endpoints[0]}-{endpoints[1]} = {edge[2]}.")
+
+    def _draw_edge_tab(self, screen: pygame.Surface) -> None:
+        if not self._is_economic():
+            screen.blit(self._font(19).render("Custos editaveis no desafio Economic.", True, MUTED), (652, 138))
+            return
+        self._button(
+            screen,
+            "mode:edit_cost",
+            "Voltar a selecionar"
+            if self.mode == "edit_cost"
+            else "Editar custo das conexoes",
+            pygame.Rect(652, 122, 276, 34),
+            self._font(18),
+            active=self.mode == "edit_cost",
+        )
+        if self.selected_edge is None:
+            screen.blit(self._font(19).render("Selecione uma aresta no grafo.", True, MUTED), (652, 170))
+            return
+        first, second = self.selected_edge
+        screen.blit(self._font(22).render(f"Conexao {first} - {second}", True, TEXT), (652, 170))
+        edge = self._edge_config(self.selected_edge)
+        cost = edge[2] if len(edge) > 2 else 1
+        self._draw_field(
+            screen,
+            "edge_cost",
+            "Custo positivo",
+            pygame.Rect(652, 208, 276, 48),
+            edge={"cost": cost},
+        )
+        screen.blit(self._font(18).render("Use um valor maior que zero.", True, MUTED), (652, 274))
 
     def _draw_floor_tab(self, screen: pygame.Surface) -> None:
         font = self._font(22)
@@ -666,25 +1017,69 @@ class LevelEditor:
         rect: pygame.Rect,
         item: dict[str, Any] | None = None,
         objective: dict[str, Any] | None = None,
+        challenge: dict[str, Any] | None = None,
+        edge: dict[str, Any] | None = None,
     ) -> None:
         font = self._font(18)
-        value = self._field_value(key, item, objective)
+        value = self._field_value(key, item, objective, challenge, edge)
         screen.blit(font.render(label, True, MUTED), (rect.x, rect.y))
         box = pygame.Rect(rect.x, rect.y + 17, rect.width, rect.height - 17)
         self._field_rects[key] = box
         pygame.draw.rect(screen, PANEL_LIGHT, box, border_radius=4)
         if self.focused_field == key:
             pygame.draw.rect(screen, ACCENT, box, width=2, border_radius=4)
-            shown = self.field_buffer
+            text = self.field_buffer
+            content_width = box.width - 14
+            caret_x = self._font(18).size(text[: self.cursor_index])[0]
+            if caret_x - self.text_scroll_px > content_width:
+                self.text_scroll_px = caret_x - content_width + 2
+            elif caret_x < self.text_scroll_px:
+                self.text_scroll_px = caret_x
+            text_surface = font.render(text, True, TEXT)
+            clip = screen.get_clip()
+            screen.set_clip(box.inflate(-10, -2))
+            text_x = box.x + 6 - self.text_scroll_px
+            if self.selection_anchor is not None and self.selection_anchor != self.cursor_index:
+                selection_start, selection_end = sorted(
+                    (self.selection_anchor, self.cursor_index)
+                )
+                left = self._font(18).size(text[:selection_start])[0]
+                right = self._font(18).size(text[:selection_end])[0]
+                selection_rect = pygame.Rect(
+                    text_x + left,
+                    box.y + 3,
+                    max(1, right - left),
+                    box.height - 6,
+                )
+                overlay = pygame.Surface(selection_rect.size, pygame.SRCALPHA)
+                overlay.fill((*ACCENT_DARK, 150))
+                screen.blit(overlay, selection_rect)
+            screen.blit(text_surface, (text_x, box.y + 4))
+            if pygame.time.get_ticks() % 1000 < 550:
+                cursor_x = text_x + caret_x
+                pygame.draw.line(
+                    screen,
+                    TEXT,
+                    (cursor_x, box.y + 4),
+                    (cursor_x, box.bottom - 4),
+                    2,
+                )
+            screen.set_clip(clip)
         else:
-            shown = str(value)
-        screen.blit(font.render(shown[:34], True, TEXT), (box.x + 6, box.y + 4))
+            text = str(value)
+            rendered = font.render(text, True, TEXT)
+            clip = screen.get_clip()
+            screen.set_clip(box.inflate(-10, -2))
+            screen.blit(rendered, (box.x + 6, box.y + 4))
+            screen.set_clip(clip)
 
     def _field_value(
         self,
         key: str,
         item: dict[str, Any] | None,
         objective: dict[str, Any] | None = None,
+        challenge: dict[str, Any] | None = None,
+        edge: dict[str, Any] | None = None,
     ) -> str:
         if key == "id":
             return str(self.config.get("id", ""))
@@ -692,12 +1087,17 @@ class LevelEditor:
             return str(self.config.get("number", ""))
         if key == "name":
             return str(self.config.get("name", ""))
-        if key == "challenge_type":
-            challenge = self.config.get("challenge", {})
-            return str(challenge.get("type", "")) if isinstance(challenge, dict) else ""
         if key == "completion":
             rewards = self.config.get("rewards", {})
             return str(rewards.get("completion", 300)) if isinstance(rewards, dict) else "300"
+        if key.startswith("challenge_param:") and challenge is not None:
+            parameter = key.split(":", 1)[1]
+            value = challenge.get(parameter, "")
+            if parameter == "reference_trail" and isinstance(value, list):
+                return ", ".join(str(floor) for floor in value)
+            return str(value)
+        if key == "edge_cost" and edge is not None:
+            return str(edge.get("cost", 1))
         item_fields = {
             "item_id": "id",
             "item_name": "name",
@@ -763,9 +1163,14 @@ class LevelEditor:
         screen.blit(font.render(label, True, TEXT), (rect.x + 18, rect.y + 18))
         field = pygame.Rect(rect.x + 18, rect.y + 62, rect.width - 36, 40)
         pygame.draw.rect(screen, PANEL_LIGHT, field, border_radius=5)
-        shown = self.path_buffer
-        max_chars = 74
-        screen.blit(font.render(shown[-max_chars:], True, TEXT), (field.x + 8, field.y + 9))
+        scroll = max(0, font.size(self.path_buffer[: self.path_cursor])[0] - field.width + 24)
+        text_x = field.x + 8 - scroll
+        screen.set_clip(field.inflate(-10, -2))
+        screen.blit(font.render(self.path_buffer, True, TEXT), (text_x, field.y + 9))
+        if pygame.time.get_ticks() % 1000 < 550:
+            cursor_x = text_x + font.size(self.path_buffer[: self.path_cursor])[0]
+            pygame.draw.line(screen, TEXT, (cursor_x, field.y + 7), (cursor_x, field.bottom - 7), 2)
+        screen.set_clip(None)
 
     def _draw_json_dialog(self, screen: pygame.Surface) -> None:
         rect = pygame.Rect(100, 245, 760, 150)
@@ -779,7 +1184,14 @@ class LevelEditor:
         )
         input_rect = pygame.Rect(rect.x + 18, rect.y + 62, rect.width - 36, 40)
         pygame.draw.rect(screen, PANEL_LIGHT, input_rect, border_radius=5)
-        screen.blit(font.render(self.field_buffer[-96:], True, TEXT), (input_rect.x + 8, input_rect.y + 9))
+        scroll = max(0, font.size(self.field_buffer[: self.cursor_index])[0] - input_rect.width + 24)
+        text_x = input_rect.x + 8 - scroll
+        screen.set_clip(input_rect.inflate(-10, -2))
+        screen.blit(font.render(self.field_buffer, True, TEXT), (text_x, input_rect.y + 9))
+        if pygame.time.get_ticks() % 1000 < 550:
+            cursor_x = text_x + font.size(self.field_buffer[: self.cursor_index])[0]
+            pygame.draw.line(screen, TEXT, (cursor_x, input_rect.y + 7), (cursor_x, input_rect.bottom - 7), 2)
+        screen.set_clip(None)
 
     def _draw_overwrite_dialog(self, screen: pygame.Surface) -> None:
         rect = pygame.Rect(245, 245, 470, 150)
@@ -792,26 +1204,74 @@ class LevelEditor:
         self._button(screen, "overwrite_no", "Cancelar", pygame.Rect(rect.x + 256, rect.y + 94, 160, 38), font)
 
     def handle_event(self, event: pygame.event.Event) -> bool:
+        if event.type == pygame.TEXTINPUT:
+            if self.path_dialog is not None:
+                self.path_buffer = (
+                    self.path_buffer[: self.path_cursor]
+                    + event.text
+                    + self.path_buffer[self.path_cursor :]
+                )
+                self.path_cursor += len(event.text)
+            elif self.focused_field is not None:
+                self._replace_selection(event.text)
+            return False
         if event.type == pygame.KEYDOWN:
             if self.path_dialog is not None:
                 self._handle_path_key(event)
                 return False
             if self.focused_field is not None:
                 if event.key == pygame.K_ESCAPE:
+                    pygame.key.stop_text_input()
                     self.focused_field = None
+                    self.selection_anchor = None
                     return False
                 if event.key == pygame.K_a and getattr(event, "mod", 0) & pygame.KMOD_CTRL:
-                    self.field_buffer = ""
+                    self.selection_anchor = 0
+                    self.cursor_index = len(self.field_buffer)
                     return False
                 if event.key == pygame.K_RETURN:
                     self._commit_field()
                     return False
                 if event.key == pygame.K_BACKSPACE:
-                    self.field_buffer = self.field_buffer[:-1]
-                elif getattr(event, "unicode", "") and event.unicode.isprintable():
-                    self.field_buffer += event.unicode
+                    if self.selection_anchor is not None and self.cursor_index != self.selection_anchor:
+                        self._replace_selection()
+                    elif self.cursor_index:
+                        self.selection_anchor = self.cursor_index - 1
+                        self._replace_selection()
+                elif event.key == pygame.K_DELETE:
+                    if self.selection_anchor is not None and self.cursor_index != self.selection_anchor:
+                        self._replace_selection()
+                    elif self.cursor_index < len(self.field_buffer):
+                        self.selection_anchor = self.cursor_index + 1
+                        self._replace_selection()
+                elif event.key in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_HOME, pygame.K_END):
+                    shift = bool(getattr(event, "mod", 0) & pygame.KMOD_SHIFT)
+                    if event.key == pygame.K_LEFT:
+                        if not shift and self.selection_anchor is not None:
+                            destination = min(self.cursor_index, self.selection_anchor)
+                        else:
+                            destination = self.cursor_index - 1
+                    elif event.key == pygame.K_RIGHT:
+                        if not shift and self.selection_anchor is not None:
+                            destination = max(self.cursor_index, self.selection_anchor)
+                        else:
+                            destination = self.cursor_index + 1
+                    elif event.key == pygame.K_HOME:
+                        destination = 0
+                    else:
+                        destination = len(self.field_buffer)
+                    self._move_cursor(destination, shift)
                 return False
             if event.key == pygame.K_ESCAPE:
+                if self.edge_origin is not None:
+                    self.edge_origin = None
+                    self.mode = "select"
+                    self._set_status("Criacao da conexao cancelada.")
+                    return False
+                if self.mode != "select":
+                    self.mode = "select"
+                    self._set_status("Modo de selecao normal.")
+                    return False
                 return True
             return False
         if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -844,12 +1304,40 @@ class LevelEditor:
                 self._set_status("Exportacao cancelada.")
             return False
         if self.path_dialog is not None:
+            if (
+                event.type == pygame.MOUSEBUTTONDOWN
+                and event.button == 1
+                and pygame.Rect(163, 307, 634, 40).collidepoint(event.pos)
+            ):
+                font = self._font(24)
+                scroll = max(
+                    0,
+                    font.size(self.path_buffer[: self.path_cursor])[0] - 610,
+                )
+                target_x = event.pos[0] - 171 + scroll
+                self.path_cursor = min(
+                    range(len(self.path_buffer) + 1),
+                    key=lambda index: abs(
+                        font.size(self.path_buffer[:index])[0] - target_x
+                    ),
+                )
             return False
         if self.focused_field is not None and not self._commit_field():
             return False
+        if self.dropdown_open:
+            for key, rect in self._buttons.items():
+                if key.startswith("challenge:") and rect.collidepoint(event.pos):
+                    self._activate_button(key)
+                    return False
+            if self._buttons.get(
+                "challenge_combo", pygame.Rect(0, 0, 0, 0)
+            ).collidepoint(event.pos):
+                self.dropdown_open = False
+                return False
+            self.dropdown_open = False
         for key, rect in self._field_rects.items():
             if rect.collidepoint(event.pos):
-                self._begin_edit(key)
+                self._begin_edit(key, event.pos[0])
                 return False
         for key, rect in self._buttons.items():
             if rect.collidepoint(event.pos):
@@ -900,6 +1388,15 @@ class LevelEditor:
             else:
                 self.remove_edge(*edge)
             return
+        if self.mode == "edit_cost":
+            edge = self._edge_at(position)
+            if edge is not None:
+                self.selected_edge = edge
+                self.tab = "edge"
+                self._set_status(f"Conexao {edge[0]}-{edge[1]} selecionada.")
+                return
+            self._set_status("Clique sobre uma aresta para seleciona-la.", error=True)
+            return
         self.selected_vertex = vertex
         if vertex is not None:
             self.dragging = True
@@ -917,14 +1414,18 @@ class LevelEditor:
         )
 
     def _edge_at(self, position: tuple[int, int]) -> tuple[int, int] | None:
+        closest: tuple[int, int] | None = None
+        closest_distance = 10.0
         for edge in self.edges:
             if len(edge) < 2 or edge[0] not in self.positions or edge[1] not in self.positions:
                 continue
             start = self.positions[edge[0]]
             end = self.positions[edge[1]]
-            if self._distance_to_segment(position, start, end) <= 9:
-                return edge[0], edge[1]
-        return None
+            distance = self._distance_to_segment(position, start, end)
+            if distance <= 9 and distance < closest_distance:
+                closest = (edge[0], edge[1])
+                closest_distance = distance
+        return closest
 
     @staticmethod
     def _distance_to_segment(
@@ -945,11 +1446,65 @@ class LevelEditor:
         projection = (start[0] + fraction * dx, start[1] + fraction * dy)
         return math.dist(point, projection)
 
-    def _begin_edit(self, key: str) -> None:
+    def _begin_edit(self, key: str, mouse_x: int | None = None) -> None:
         self.focused_field = key
         item = self._selected_item_config()
         objective = self._selected_objective_config()
-        self.field_buffer = self._field_value(key, item, objective)
+        challenge = self.config.get("challenge")
+        edge = (
+            {"cost": self._edge_config(self.selected_edge)[2] if len(self._edge_config(self.selected_edge)) > 2 else 1}
+            if key == "edge_cost" and self.selected_edge is not None
+            else None
+        )
+        self.field_buffer = self._field_value(
+            key,
+            item,
+            objective,
+            challenge if isinstance(challenge, dict) else None,
+            edge,
+        )
+        self.cursor_index = len(self.field_buffer)
+        self.selection_anchor = None
+        self.text_scroll_px = 0
+        if mouse_x is not None:
+            self.cursor_index = self._cursor_from_mouse(key, mouse_x)
+        else:
+            self.text_scroll_px = max(
+                0, self._font(18).size(self.field_buffer)[0] - 240
+            )
+        pygame.key.start_text_input()
+
+    def _cursor_from_mouse(self, key: str, mouse_x: int) -> int:
+        rect = self._field_rects.get(key)
+        if rect is None:
+            return len(self.field_buffer)
+        target_x = mouse_x - rect.x - 6 + self.text_scroll_px
+        for index in range(len(self.field_buffer) + 1):
+            width = self._font(18).size(self.field_buffer[:index])[0]
+            if width >= target_x:
+                if index > 0:
+                    previous_width = self._font(18).size(self.field_buffer[: index - 1])[0]
+                    if target_x - previous_width < width - target_x:
+                        return index - 1
+                return index
+        return len(self.field_buffer)
+
+    def _replace_selection(self, value: str = "") -> None:
+        if self.selection_anchor is None:
+            start = end = self.cursor_index
+        else:
+            start, end = sorted((self.selection_anchor, self.cursor_index))
+        self.field_buffer = self.field_buffer[:start] + value + self.field_buffer[end:]
+        self.cursor_index = start + len(value)
+        self.selection_anchor = None
+
+    def _move_cursor(self, position: int, extend: bool) -> None:
+        if extend:
+            if self.selection_anchor is None:
+                self.selection_anchor = self.cursor_index
+        else:
+            self.selection_anchor = None
+        self.cursor_index = min(max(position, 0), len(self.field_buffer))
 
     def _commit_field(self) -> bool:
         key = self.focused_field
@@ -986,34 +1541,35 @@ class LevelEditor:
                 self.config["number"] = int(value)
             elif key == "name":
                 self.config["name"] = value
-            elif key == "challenge_type":
-                challenge = self.config.setdefault("challenge", {})
-                if not isinstance(challenge, dict):
-                    raise ValueError("A configuracao do desafio deve ser um objeto.")
-                old_type = challenge.get("type")
-                old_completion_id = (
-                    ChallengeRegistry.completion_id(old_type)
-                    if old_type in ChallengeRegistry.types()
-                    else None
-                )
-                challenge["type"] = value
-                if old_completion_id is not None:
-                    requirements = self.config.get("exit_requirements")
-                    if (
-                        isinstance(requirements, dict)
-                        and isinstance(requirements.get("challenges"), list)
-                        and old_completion_id in requirements["challenges"]
-                    ):
-                        requirements["challenges"].remove(old_completion_id)
-                        if value in ChallengeRegistry.types():
-                            requirements["challenges"].append(
-                                ChallengeRegistry.completion_id(value)
-                            )
             elif key == "completion":
                 rewards = self.config.setdefault("rewards", {})
                 if not isinstance(rewards, dict):
                     raise ValueError("A configuracao de recompensas deve ser um objeto.")
                 rewards["completion"] = int(value)
+            elif key.startswith("challenge_param:"):
+                challenge = self.config.get("challenge")
+                if not isinstance(challenge, dict):
+                    raise ValueError("A configuracao do desafio deve ser um objeto.")
+                parameter = key.split(":", 1)[1]
+                allowed = ChallengeRegistry.allowed_fields(challenge.get("type")) - {"type"}
+                if parameter not in allowed:
+                    raise ValueError("O parametro nao e valido para este desafio.")
+                if parameter == "reference_trail":
+                    parsed_trail = [
+                        int(floor.strip())
+                        for floor in value.split(",")
+                        if floor.strip()
+                    ]
+                    if not parsed_trail:
+                        raise ValueError("Informe ao menos um andar para a trilha.")
+                    challenge[parameter] = parsed_trail
+                else:
+                    challenge[parameter] = int(value)
+                self._cache_current_challenge_parameters()
+            elif key == "edge_cost":
+                if self.selected_edge is None or not self._is_economic():
+                    raise ValueError("Selecione uma conexao de um desafio Economic.")
+                self._set_edge_cost(self.selected_edge, value)
             elif key.startswith("objective_"):
                 objective_fields = {
                     "objective_id": ("id", str),
@@ -1046,7 +1602,9 @@ class LevelEditor:
                 self.update_item(self.selected_item, **{field: converter(value)})
                 if key == "item_id" and isinstance(previous_id, str):
                     self._replace_item_reference(previous_id, value)
+            pygame.key.stop_text_input()
             self.focused_field = None
+            self.selection_anchor = None
             self._set_status("Alteracao aplicada.")
             return True
         except (TypeError, ValueError) as error:
@@ -1069,12 +1627,21 @@ class LevelEditor:
     def _activate_button(self, key: str) -> None:
         if key.startswith("tab:"):
             self.tab = key.split(":", 1)[1]
+            if self.tab != "edge" and self.mode == "edit_cost":
+                self.mode = "select"
+        elif key == "challenge_combo":
+            self.dropdown_open = not self.dropdown_open
+        elif key.startswith("challenge:"):
+            self._set_challenge_type(key.split(":", 1)[1])
         elif key.startswith("json:"):
             field = key.split(":", 1)[1]
             self.focused_field = f"json:{field}"
             self.field_buffer = json.dumps(
                 self._json_field_value(field), ensure_ascii=False, separators=(",", ":")
             )
+            self.cursor_index = len(self.field_buffer)
+            self.selection_anchor = None
+            pygame.key.start_text_input()
         elif key == "new":
             self.new_level()
         elif key == "open":
@@ -1083,10 +1650,12 @@ class LevelEditor:
             default_path = (
                 self.active_path
                 if key == "save" and self.active_path is not None
-                else DEFAULT_LEVELS_DIR / f"{self.config.get('id', 'nova-fase')}.json"
+                else self.levels_dir / f"{self.config.get('id', 'nova-fase')}.json"
             )
             self.path_dialog = key
             self.path_buffer = str(default_path)
+            self.path_cursor = len(self.path_buffer)
+            pygame.key.start_text_input()
         elif key == "validate":
             try:
                 self.validate()
@@ -1097,6 +1666,7 @@ class LevelEditor:
             self._back_requested = True
         elif key == "add_vertex":
             self.mode = "add_vertex"
+            self.edge_origin = None
             self._set_status("Clique na area do grafo para posicionar o novo andar.")
         elif key == "add_edge":
             self.mode = "add_edge"
@@ -1104,12 +1674,23 @@ class LevelEditor:
             self._set_status("Selecione dois andares para criar uma conexao.")
         elif key == "delete_edge":
             self.mode = "delete_edge"
+            self.edge_origin = None
             self._set_status("Clique sobre uma conexao para remove-la.")
+        elif key == "mode:edit_cost":
+            self.mode = "select" if self.mode == "edit_cost" else "edit_cost"
+            self.edge_origin = None
+            self.selected_edge = None
+            self._set_status(
+                "Selecione uma aresta para editar o custo."
+                if self.mode == "edit_cost"
+                else "Modo de selecao normal."
+            )
         elif key == "delete_vertex":
             if self.selected_vertex is None:
                 self._set_status("Selecione um andar antes de remove-lo.", error=True)
             else:
                 self.remove_vertex(self.selected_vertex)
+                self.mode = "select"
         elif key == "set_start" and self.selected_vertex is not None:
             self.config["start_floor"] = self.selected_vertex
             self._set_status(f"Andar {self.selected_vertex} definido como inicio.")
@@ -1184,19 +1765,43 @@ class LevelEditor:
     def _open_path_dialog(self) -> None:
         self.path_dialog = "open"
         self.path_buffer = str(self.active_path) if self.active_path is not None else ""
+        self.path_cursor = len(self.path_buffer)
+        pygame.key.start_text_input()
 
     def _handle_path_key(self, event: pygame.event.Event) -> None:
         if event.key == pygame.K_ESCAPE:
             self.path_dialog = None
+            pygame.key.stop_text_input()
             self._set_status("Operacao cancelada.")
         elif event.key == pygame.K_a and getattr(event, "mod", 0) & pygame.KMOD_CTRL:
             self.path_buffer = ""
+            self.path_cursor = 0
         elif event.key == pygame.K_BACKSPACE:
-            self.path_buffer = self.path_buffer[:-1]
+            if self.path_cursor:
+                self.path_buffer = (
+                    self.path_buffer[: self.path_cursor - 1]
+                    + self.path_buffer[self.path_cursor :]
+                )
+                self.path_cursor -= 1
+        elif event.key == pygame.K_DELETE:
+            if self.path_cursor < len(self.path_buffer):
+                self.path_buffer = (
+                    self.path_buffer[: self.path_cursor]
+                    + self.path_buffer[self.path_cursor + 1 :]
+                )
+        elif event.key == pygame.K_LEFT:
+            self.path_cursor = max(0, self.path_cursor - 1)
+        elif event.key == pygame.K_RIGHT:
+            self.path_cursor = min(len(self.path_buffer), self.path_cursor + 1)
+        elif event.key == pygame.K_HOME:
+            self.path_cursor = 0
+        elif event.key == pygame.K_END:
+            self.path_cursor = len(self.path_buffer)
         elif event.key == pygame.K_RETURN:
             mode = self.path_dialog
             target = self.path_buffer.strip().strip('"')
             self.path_dialog = None
+            pygame.key.stop_text_input()
             if not target:
                 self._set_status("Informe o caminho do arquivo.", error=True)
                 return
@@ -1212,8 +1817,6 @@ class LevelEditor:
                     self.pending_overwrite = Path(error.args[0])
                 except ValueError as error:
                     self._set_status(str(error), error=True)
-        elif getattr(event, "unicode", "") and event.unicode.isprintable():
-            self.path_buffer += event.unicode
 
     def _confirm_overwrite(self) -> None:
         destination = self.pending_overwrite

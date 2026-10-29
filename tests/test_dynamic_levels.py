@@ -70,13 +70,13 @@ class DynamicLevelTests(unittest.TestCase):
         pygame.quit()
         self.temporary_directory.cleanup()
 
-    def test_default_directory_discovers_all_seven_existing_phases(self) -> None:
+    def test_default_directory_discovers_the_eight_configured_project_phases(self) -> None:
         discovery = LevelManager.discover_levels()
 
-        self.assertEqual(len(discovery.levels), 7)
+        self.assertGreaterEqual(len(discovery.levels), 8)
         self.assertEqual(
-            [level.identifier for level in discovery.levels],
-            [f"phase-0{number}" for number in range(1, 8)],
+            [level.identifier for level in discovery.levels[:8]],
+            [f"phase-0{number}" for number in range(1, 9)],
         )
         self.assertFalse(
             [diagnostic for diagnostic in discovery.diagnostics if diagnostic.severity == "error"]

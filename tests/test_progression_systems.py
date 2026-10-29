@@ -7,7 +7,7 @@ from pathlib import Path
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
 
-from level_manager import LevelManager
+from level_manager import DEFAULT_LEVELS_DIR, LevelManager
 from systems.menu_manager import MenuManager, Screen
 from systems.progress_manager import ProgressManager
 from systems.save_manager import SaveManager
@@ -205,7 +205,7 @@ class ApplicationFlowTests(unittest.TestCase):
 
                 pygame.quit()
 
-    def test_full_seven_phase_flow_preserves_special_challenge_rules(self) -> None:
+    def test_full_eight_phase_flow_preserves_special_challenge_rules(self) -> None:
         routes = {
             1: (2, 3, 4, 6),
             2: (2, 3, 4, 5, 6),
@@ -214,6 +214,7 @@ class ApplicationFlowTests(unittest.TestCase):
             5: (2, 6, 4, 3, 1),
             6: (2, 3, 6),
             7: (2, 4, 6, 5, 6, 7),
+            8: (3, 4, 5),
         }
         collect_floors = {
             1: {2, 3, 4},
@@ -223,12 +224,21 @@ class ApplicationFlowTests(unittest.TestCase):
             5: {2},
             6: {3},
             7: {2, 5},
+            8: {3},
         }
         with tempfile.TemporaryDirectory() as directory:
-            app = ElevatorPrototype(str(Path(directory) / "progress.json"))
+            levels_dir = Path(directory) / "levels"
+            levels_dir.mkdir()
+            for phase_number in range(1, 9):
+                source = DEFAULT_LEVELS_DIR / f"phase-0{phase_number}.json"
+                (levels_dir / source.name).write_bytes(source.read_bytes())
+            app = ElevatorPrototype(
+                str(Path(directory) / "progress.json"),
+                levels_dir=levels_dir,
+            )
             try:
                 app._continue_game()
-                for phase in range(1, 8):
+                for phase in range(1, 9):
                     self.assertEqual(app.active_phase, phase)
                     for destination in routes[phase]:
                         app.selected_floor = destination
@@ -239,14 +249,14 @@ class ApplicationFlowTests(unittest.TestCase):
                     self.assertIn(
                         f"phase-0{phase}", app.progress_manager.completed_levels
                     )
-                    if phase < 7:
+                    if phase < 8:
                         app._continue_after_result()
                         self.assertEqual(app.active_phase, phase + 1)
 
                 self.assertTrue(app.progress_manager.all_levels_complete)
                 self.assertEqual(
                     app.saved_progress["completed_levels"],
-                    [1, 2, 3, 4, 5, 6, 7],
+                    [1, 2, 3, 4, 5, 6, 7, 8],
                 )
                 self.assertEqual(app.progress_manager.recommended_level, None)
                 app._continue_after_result()

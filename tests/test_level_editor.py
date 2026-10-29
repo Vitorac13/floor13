@@ -3,6 +3,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -12,6 +13,7 @@ import pygame
 from level_editor import LevelEditor, new_level_config
 from level_manager import DEFAULT_LEVELS_DIR, LevelManager
 from main import ElevatorPrototype
+from economic_challenge import EconomicChallengeManager
 from systems.menu_manager import Screen
 from systems.score_manager import AttemptResult
 
@@ -39,13 +41,12 @@ class LevelEditorTests(unittest.TestCase):
                 {"key": pygame.K_a, "mod": pygame.KMOD_CTRL, "unicode": ""},
             )
         )
-        for character in text:
-            self.editor.handle_event(
-                pygame.event.Event(
-                    pygame.KEYDOWN,
-                    {"key": pygame.K_a, "mod": 0, "unicode": character},
-                )
+        self.editor.handle_event(
+            pygame.event.Event(
+                pygame.TEXTINPUT,
+                {"text": text},
             )
+        )
         self.editor.handle_event(
             pygame.event.Event(
                 pygame.KEYDOWN,
@@ -93,8 +94,125 @@ class LevelEditorTests(unittest.TestCase):
 
         self.editor.draw(self.screen)
         self._click((545, 589))
-        self.assertNotIn(2, self.editor.vertices)
-        self.assertEqual(self.editor.vertices, [1, 3])
+        self.assertEqual(self.editor.vertices, [1, 2])
+        self.assertNotIn(3, self.editor.vertices)
+
+    def test_removing_vertex_renumbers_graph_and_all_floor_references(self) -> None:
+        for floor in range(2, 6):
+            self.editor.add_vertex((150 + floor * 70, 260))
+        self.editor.config["graph"]["edges"] = [
+            [1, 4, 11],
+            [4, 2, 12],
+            [2, 5, 13],
+            [5, 3, 14],
+        ]
+        self.editor.config.update({"start_floor": 5, "exit_floor": 3})
+        self.editor.config["items"] = [
+            {
+                "id": "keep-key",
+                "name": "Chave",
+                "floor": 5,
+                "type": "essential",
+                "score": 100,
+                "key": True,
+            },
+            {
+                "id": "removed-item",
+                "name": "Item removido",
+                "floor": 4,
+                "type": "bonus",
+                "score": 20,
+            },
+        ]
+        self.editor.config["exit_requirements"]["keys"] = ["keep-key"]
+        self.editor.config["connection_requirements"] = [
+            {"from": 2, "to": 5, "keys": ["keep-key"]},
+            {"from": 1, "to": 4, "keys": []},
+        ]
+        self.editor.config["challenge"] = {
+            "type": "economic",
+            "destination_floor": 4,
+        }
+        self.editor.config["optional_objectives"] = [
+            {
+                "id": "visit",
+                "name": "Visite",
+                "description": "Visite o andar.",
+                "type": "visit_floor",
+                "floor": 5,
+                "reward": 10,
+            }
+        ]
+
+        self.editor.remove_vertex(4)
+        new_floor = self.editor.add_vertex((400, 400))
+
+        self.assertEqual(self.editor.vertices, [1, 2, 3, 4, 5])
+        self.assertEqual(new_floor, 5)
+        self.assertEqual(
+            self.editor.edges,
+            [[2, 4, 13], [4, 3, 14]],
+        )
+        self.assertEqual(self.editor.config["start_floor"], 4)
+        self.assertEqual(self.editor.config["exit_floor"], 3)
+        self.assertEqual(self.editor.items[0]["floor"], 4)
+        self.assertEqual(self.editor.config["exit_requirements"]["keys"], ["keep-key"])
+        self.assertEqual(
+            self.editor.config["connection_requirements"],
+            [{"from": 2, "to": 4, "keys": ["keep-key"]}],
+        )
+        self.assertEqual(self.editor.config["challenge"]["destination_floor"], 3)
+        self.assertEqual(self.editor.objectives[0]["floor"], 4)
+
+    def test_economic_cost_mode_selects_edges_and_escape_cancels_modes(self) -> None:
+        self.editor.add_vertex((480, 330))
+        self.editor.add_edge(1, 2)
+        self.editor._set_challenge_type("economic")
+        self.editor.tab = "edge"
+        self.editor.draw(self.screen)
+        self._click(self.editor._buttons["mode:edit_cost"].center)
+        self.assertEqual(self.editor.mode, "edit_cost")
+
+        midpoint = (
+            (self.editor.positions[1][0] + self.editor.positions[2][0]) // 2,
+            (self.editor.positions[1][1] + self.editor.positions[2][1]) // 2,
+        )
+        self._click(midpoint)
+        self.assertEqual(self.editor.selected_edge, (1, 2))
+        self.editor.draw(self.screen)
+        self._click(self.editor._field_rects["edge_cost"].center)
+        self._type_text("7")
+        self.assertEqual(self.editor.edges[0][2], 7)
+
+        self.editor._begin_edit("edge_cost")
+        self.assertFalse(
+            self.editor.handle_event(
+                pygame.event.Event(
+                    pygame.KEYDOWN,
+                    {"key": pygame.K_ESCAPE, "mod": 0, "unicode": ""},
+                )
+            )
+        )
+        self.assertIsNone(self.editor.focused_field)
+        self.assertEqual(self.editor.mode, "edit_cost")
+        self.editor.handle_event(
+            pygame.event.Event(
+                pygame.KEYDOWN,
+                {"key": pygame.K_ESCAPE, "mod": 0, "unicode": ""},
+            )
+        )
+        self.assertEqual(self.editor.mode, "select")
+
+        self.editor.mode = "add_edge"
+        self.editor.edge_origin = 1
+        self.editor.handle_event(
+            pygame.event.Event(
+                pygame.KEYDOWN,
+                {"key": pygame.K_ESCAPE, "mod": 0, "unicode": ""},
+            )
+        )
+        self.assertIsNone(self.editor.edge_origin)
+        self.assertEqual(self.editor.mode, "select")
 
     def test_mouse_sets_start_and_exit_and_items_can_be_added_and_edited(self) -> None:
         second = self.editor.add_vertex((480, 330))
@@ -271,14 +389,19 @@ class LevelEditorTests(unittest.TestCase):
         self.editor.add_edge(1, 2)
         self.editor.config["exit_floor"] = 2
         self.editor.config["id"] = "editor-test"
-        self.editor.config["name"] = "Fase do editor"
+        self.editor.config["name"] = "Fase do editor com ação"
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "editor-test.json"
 
             self.editor.export_file(output)
             level = LevelManager.load_level("editor-test", directory)
+            exported_text = output.read_text(encoding="utf-8")
+            self.assertIn('\n  "graph": {', exported_text)
+            self.assertTrue(exported_text.endswith("\n"))
 
             self.assertEqual(level.graph.vertices, (1, 2))
+            self.assertIn("ação", exported_text)
+            self.assertEqual(level.name, "Fase do editor com ação")
             self.assertEqual(level.graph.edge_count, 1)
             with self.assertRaises(FileExistsError):
                 self.editor.export_file(output)
@@ -322,6 +445,87 @@ class LevelEditorTests(unittest.TestCase):
         self.assertNotIn(config["id"], {level.identifier for level in existing})
         self.assertNotIn(config["number"], {level.number for level in existing})
 
+    def test_text_cursor_uses_mouse_position_and_textinput_supports_unicode(self) -> None:
+        self.editor.config["name"] = "Fase longa para editar"
+        self.editor.draw(self.screen)
+        name_rect = self.editor._field_rects["name"]
+        self._click((name_rect.left + 38, name_rect.centery))
+
+        self.assertEqual(self.editor.focused_field, "name")
+        self.assertGreater(self.editor.cursor_index, 0)
+        self.assertLess(self.editor.cursor_index, len(self.editor.field_buffer))
+        self.editor.handle_event(
+            pygame.event.Event(
+                pygame.TEXTINPUT,
+                {"text": "é"},
+            )
+        )
+        self.assertIn("é", self.editor.field_buffer)
+
+    def test_challenge_dropdown_maps_supported_labels_and_preserves_parameters(self) -> None:
+        self.editor.add_vertex((480, 330))
+        self.editor.add_edge(1, 2)
+        self.editor.config["exit_floor"] = 2
+        self.editor.draw(self.screen)
+        self._click((790, 343))
+        self.assertTrue(self.editor.dropdown_open)
+        self.editor.draw(self.screen)
+        self._click((700, 435))
+        self.assertEqual(self.editor.config["challenge"]["type"], "economic")
+        self.assertEqual(self.editor.config["challenge"]["destination_floor"], 2)
+        self.editor._commit_field()
+        self.editor._set_challenge_type("hamilton")
+        self.editor._set_challenge_type("economic")
+        self.assertEqual(self.editor.config["challenge"]["destination_floor"], 2)
+        self.assertEqual(self.editor.edges, [[1, 2, 1]])
+
+    def test_economic_edge_cost_round_trip_and_dijkstra_route(self) -> None:
+        self.editor.add_vertex((360, 250))
+        self.editor.add_vertex((500, 250))
+        self.editor.add_edge(1, 2)
+        self.editor.add_edge(2, 3)
+        self.editor.add_edge(1, 3)
+        self.editor._set_challenge_type("economic")
+        self.editor.config["exit_floor"] = 3
+        self.editor.config["challenge"]["destination_floor"] = 3
+        self.editor.tab = "edge"
+        self.editor.draw(self.screen)
+        self._click(self.editor._buttons["mode:edit_cost"].center)
+        midpoint = (
+            (self.editor.positions[1][0] + self.editor.positions[2][0]) // 2,
+            (self.editor.positions[1][1] + self.editor.positions[2][1]) // 2,
+        )
+        self._click(midpoint)
+        self.assertEqual(self.editor.selected_edge, (1, 2))
+        self.editor.draw(self.screen)
+        self._click(self.editor._field_rects["edge_cost"].center)
+        self._type_text("2")
+        self.editor._set_edge_cost((2, 3), "3")
+        self.editor._set_edge_cost((1, 3), "10")
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "weighted-test.json"
+            self.editor.config["id"] = "weighted-test"
+            self.editor.config["number"] = 1
+            self.editor.export_file(output)
+            level = LevelManager.load_level("weighted-test", directory)
+            challenge = EconomicChallengeManager.create_for_level(level)
+
+        self.assertEqual(level.graph.weight(1, 2), 2)
+        self.assertEqual(level.graph.weight(2, 3), 3)
+        self.assertEqual(challenge.optimal_cost, 5)
+        self.assertEqual(challenge.optimal_route, (1, 2, 3))
+
+    def test_economic_edge_cost_rejects_nonpositive_and_nonfinite_values(self) -> None:
+        self.editor.add_vertex((480, 330))
+        self.editor.add_edge(1, 2)
+        self.editor._set_challenge_type("economic")
+
+        for invalid in ("0", "-1", "nan", "inf", "invalid"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaises(ValueError):
+                    self.editor._set_edge_cost((1, 2), invalid)
+
 
 class NavigationExitTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -340,6 +544,10 @@ class NavigationExitTests(unittest.TestCase):
                 pygame.MOUSEBUTTONDOWN, {"button": 1, "pos": position}
             )
         )
+        self.app._handle_events()
+
+    def _send_event(self, event: pygame.event.Event) -> None:
+        pygame.event.post(event)
         self.app._handle_events()
 
     def test_in_game_menu_discards_attempt_without_score_or_progress(self) -> None:
@@ -373,7 +581,7 @@ class NavigationExitTests(unittest.TestCase):
 
         self.app._draw()
         self.assertEqual(self.app.progress_manager.recommended_level, "phase-02")
-        self.assertFalse(hasattr(self.app, "result_replay_rect"))
+        self.assertTrue(hasattr(self.app, "result_replay_rect"))
         self.assertTrue(hasattr(self.app, "result_menu_rect"))
 
         self._click(self.app.result_menu_rect.center)
@@ -381,6 +589,88 @@ class NavigationExitTests(unittest.TestCase):
         self.assertEqual(self.app.menu.screen, Screen.MAIN_MENU)
         self.assertEqual(self.app.progress_manager.completed_levels, completed_before)
         self.assertIsNone(self.app.attempt_result)
+
+    def test_main_menu_escape_and_window_close_request_confirmation(self) -> None:
+        self.app.menu.show_level_select()
+        self._send_event(
+            pygame.event.Event(
+                pygame.KEYDOWN,
+                {"key": pygame.K_ESCAPE, "mod": 0, "unicode": ""},
+            )
+        )
+        self.assertEqual(self.app.menu.screen, Screen.MAIN_MENU)
+        self.assertFalse(self.app.quit_confirmation_open)
+
+        self._send_event(
+            pygame.event.Event(
+                pygame.KEYDOWN,
+                {"key": pygame.K_ESCAPE, "mod": 0, "unicode": ""},
+            )
+        )
+        self.assertTrue(self.app.quit_confirmation_open)
+        self.app._draw()
+        self._click(self.app.quit_cancel_rect.center)
+        self.assertFalse(self.app.quit_confirmation_open)
+        self.assertEqual(self.app.menu.screen, Screen.MAIN_MENU)
+
+        self._click(self.app.main_exit_rect.center)
+        self.assertTrue(self.app.quit_confirmation_open)
+        self._send_event(
+            pygame.event.Event(
+                pygame.KEYDOWN,
+                {"key": pygame.K_n, "mod": 0, "unicode": "n"},
+            )
+        )
+        self.assertFalse(self.app.quit_confirmation_open)
+
+        self.app._request_quit()
+        with patch.object(self.app, "_exit_game") as exit_game:
+            self._send_event(
+                pygame.event.Event(
+                    pygame.MOUSEBUTTONDOWN,
+                    {"button": 1, "pos": self.app.quit_confirm_rect.center},
+                )
+            )
+        exit_game.assert_called_once_with()
+        self.app.quit_confirmation_open = False
+
+        self._send_event(pygame.event.Event(pygame.QUIT))
+        self.assertTrue(self.app.quit_confirmation_open)
+        self._send_event(
+            pygame.event.Event(
+                pygame.KEYDOWN,
+                {"key": pygame.K_ESCAPE, "mod": 0, "unicode": ""},
+            )
+        )
+        self.assertFalse(self.app.quit_confirmation_open)
+
+    def test_replay_button_starts_clean_attempt_without_duplicate_completion_score(self) -> None:
+        for level_id in ("phase-01", "phase-02", "phase-03", "phase-04", "phase-05"):
+            self.app.progress_manager.complete_level(level_id)
+        for level_id in ("phase-01", "phase-02", "phase-03", "phase-04", "phase-05"):
+            level = self.app.levels_by_id[level_id]
+            self.app._start_phase(level_id)
+            self.app.saved_progress["level_scores"][level_id] = 432
+            self.app.attempt_result = AttemptResult(
+                level.number, 999, (), (), ("challenge",), (), 5, 3.0
+            )
+            self.app.menu.show_result(level_id)
+            self.app._draw()
+            self._click(self.app.result_replay_rect.center)
+
+            self.assertEqual(self.app.menu.screen, Screen.GAME)
+            self.assertEqual(self.app.active_level_id, level_id)
+            self.assertEqual(self.app.current_floor, level.start_floor)
+            self.assertFalse(self.app.active_state.is_complete)
+            self.assertEqual(self.app.attempt_movements, 0)
+            self.assertEqual(
+                self.app.item_progress.visited_floors,
+                {level.start_floor},
+            )
+            self.assertEqual(self.app.item_progress.movement_count, 0)
+            self.assertEqual(self.app.score_manager.current_attempt_score, 0)
+            self.assertEqual(self.app.saved_progress["level_scores"][level_id], 432)
+            self.assertIn(level_id, self.app.progress_manager.completed_levels)
 
     def test_main_menu_opens_editor_and_editor_returns_to_menu(self) -> None:
         self.app._draw()
@@ -392,6 +682,95 @@ class NavigationExitTests(unittest.TestCase):
         self._click(back_button.center)
 
         self.assertEqual(self.app.menu.screen, Screen.MAIN_MENU)
+
+    def test_escape_in_editor_cancels_active_tool_without_quitting(self) -> None:
+        self.app.menu.show_level_editor()
+        self.app.level_editor.mode = "add_edge"
+        self.app.level_editor.edge_origin = 1
+
+        self._send_event(
+            pygame.event.Event(
+                pygame.KEYDOWN,
+                {"key": pygame.K_ESCAPE, "mod": 0, "unicode": ""},
+            )
+        )
+
+        self.assertEqual(self.app.menu.screen, Screen.LEVEL_EDITOR)
+        self.assertEqual(self.app.level_editor.mode, "select")
+        self.assertIsNone(self.app.level_editor.edge_origin)
+        self.assertFalse(self.app.quit_confirmation_open)
+
+    def test_export_refreshes_level_indexes_and_preserves_existing_progress(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            levels_dir = Path(directory) / "levels"
+            levels_dir.mkdir()
+            first = new_level_config(levels_dir)
+            (levels_dir / f"{first['id']}.json").write_text(
+                json.dumps(first), encoding="utf-8"
+            )
+            app = ElevatorPrototype(
+                str(Path(directory) / "progress.json"),
+                levels_dir=levels_dir,
+            )
+            app.progress_manager.complete_level(first["id"])
+            app.saved_progress["level_scores"][first["id"]] = 120
+
+            editor = app.level_editor
+            editor.new_level()
+            output = levels_dir / f"{editor.config['id']}.json"
+            editor.export_file(output)
+
+            self.assertEqual(len(app.phase_levels), 2)
+            self.assertEqual(app._level_select_range_label(), "Fases 1-2 de 2")
+            self.assertIn(editor.config["id"], app.levels_by_id)
+            self.assertEqual(
+                app.levels_by_number[editor.config["number"]].identifier,
+                editor.config["id"],
+            )
+            self.assertIn(first["id"], app.progress_manager.completed_levels)
+            self.assertEqual(app.saved_progress["level_scores"][first["id"]], 120)
+
+            editor.export_file(output, overwrite=True)
+            self.assertEqual(len(app.phase_levels), 2)
+
+    def test_level_select_scrolls_all_levels_and_updates_visible_buttons(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            levels_dir = Path(directory) / "levels"
+            levels_dir.mkdir()
+            for number in range(1, 9):
+                config = new_level_config(levels_dir)
+                config["id"] = f"phase-{number:02d}"
+                config["number"] = number
+                (levels_dir / f"{config['id']}.json").write_text(
+                    json.dumps(config), encoding="utf-8"
+                )
+            app = ElevatorPrototype(
+                str(Path(directory) / "progress.json"),
+                levels_dir=levels_dir,
+            )
+            app.menu.show_level_select()
+            app._draw_level_select()
+            self.assertEqual(len(app.level_rects), 6)
+            self.assertEqual(
+                app._level_select_range_label(),
+                "Fases 1-6 de 8  |  Role para baixo para ver mais fases",
+            )
+
+            pygame.event.post(
+                pygame.event.Event(pygame.MOUSEWHEEL, {"y": -1})
+            )
+            app._handle_events()
+            self.assertEqual(app.level_select_offset, 1)
+            app.level_select_offset = 2
+            app._draw_level_select()
+            self.assertEqual(
+                app._level_select_range_label(),
+                "Fases 3-8 de 8  |  Role para baixo para ver mais fases",
+            )
+            self.assertEqual(
+                list(app.level_rects),
+                [f"phase-{number:02d}" for number in range(3, 9)],
+            )
 
 
 if __name__ == "__main__":

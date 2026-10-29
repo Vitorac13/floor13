@@ -8,7 +8,9 @@
     "phase-05",
     "phase-06",
     "phase-07",
-    "phase-08"
+    "phase-08",
+    "phase-09",
+    "phase-10"
   ],
   "completed_level_ids": [
     "phase-01",
@@ -18,7 +20,9 @@
     "phase-05",
     "phase-06",
     "phase-07",
-    "phase-08"
+    "phase-08",
+    "phase-09",
+    "phase-10"
   ],
   "level_scores": {
     "phase-01": 800,
@@ -28,7 +32,9 @@
     "phase-05": 500,
     "phase-06": 800,
     "phase-07": 1100,
-    "phase-08": 400
+    "phase-08": 400,
+    "phase-09": 400,
+    "phase-10": 500
   },
   "best_results": {
     "phase-01": {
@@ -145,6 +151,34 @@
         "collect_and_exit"
       ],
       "completed_objectives": []
+    },
+    "phase-09": {
+      "score": 400,
+      "movements": 2,
+      "elapsed_seconds": 5.650119800004177,
+      "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "economic_optimal_route"
+      ],
+      "completed_objectives": [
+        "objective-1"
+      ]
+    },
+    "phase-10": {
+      "score": 500,
+      "movements": 4,
+      "elapsed_seconds": 14.65371949999826,
+      "essential_items": [
+        "item-1"
+      ],
+      "bonus_items": [],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": [
+        "objective-1"
+      ]
     }
   },
   "last_results": {
@@ -262,9 +296,37 @@
         "collect_and_exit"
       ],
       "completed_objectives": []
+    },
+    "phase-09": {
+      "score": 400,
+      "movements": 2,
+      "elapsed_seconds": 5.650119800004177,
+      "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "economic_optimal_route"
+      ],
+      "completed_objectives": [
+        "objective-1"
+      ]
+    },
+    "phase-10": {
+      "score": 500,
+      "movements": 4,
+      "elapsed_seconds": 14.65371949999826,
+      "essential_items": [
+        "item-1"
+      ],
+      "bonus_items": [],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": [
+        "objective-1"
+      ]
     }
   },
-  "total_score": 4900,
+  "total_score": 5800,
   "unlocked_levels": [
     1,
     2,
@@ -273,7 +335,9 @@
     5,
     6,
     7,
-    8
+    8,
+    9,
+    10
   ],
   "completed_levels": [
     1,
@@ -283,6 +347,8 @@
     5,
     6,
     7,
-    8
+    8,
+    9,
+    10
   ]
 }
