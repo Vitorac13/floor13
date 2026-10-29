@@ -11,7 +11,8 @@
     "phase-08",
     "phase-09",
     "phase-10",
-    "phase-11"
+    "phase-11",
+    "phase-12"
   ],
   "completed_level_ids": [
     "phase-01",
@@ -24,7 +25,8 @@
     "phase-08",
     "phase-09",
     "phase-10",
-    "phase-11"
+    "phase-11",
+    "phase-12"
   ],
   "level_scores": {
     "phase-01": 800,
@@ -37,7 +39,8 @@
     "phase-08": 400,
     "phase-09": 400,
     "phase-10": 500,
-    "phase-11": 300
+    "phase-11": 300,
+    "phase-12": 400
   },
   "best_results": {
     "phase-01": {
@@ -188,6 +191,19 @@
       "movements": 8,
       "elapsed_seconds": 10.948332100000698,
       "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": []
+    },
+    "phase-12": {
+      "score": 400,
+      "movements": 5,
+      "elapsed_seconds": 8.83023449999746,
+      "essential_items": [
+        "item-1"
+      ],
       "bonus_items": [],
       "completed_challenges": [
         "collect_and_exit"
@@ -349,9 +365,22 @@
         "collect_and_exit"
       ],
       "completed_objectives": []
+    },
+    "phase-12": {
+      "score": 400,
+      "movements": 5,
+      "elapsed_seconds": 8.83023449999746,
+      "essential_items": [
+        "item-1"
+      ],
+      "bonus_items": [],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": []
     }
   },
-  "total_score": 6100,
+  "total_score": 6500,
   "unlocked_levels": [
     1,
     2,
@@ -363,7 +392,8 @@
     8,
     9,
     10,
-    11
+    11,
+    12
   ],
   "completed_levels": [
     1,
@@ -376,6 +406,7 @@
     8,
     9,
     10,
-    11
+    11,
+    12
   ]
 }

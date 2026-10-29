@@ -7,6 +7,7 @@ import json
 import math
 from pathlib import Path
 from typing import Any, Callable
+import re
 
 import pygame
 
@@ -248,8 +249,28 @@ class LevelEditor:
         try:
             destination.parent.mkdir(parents=True, exist_ok=True)
             with destination.open("w", encoding="utf-8", newline="\n") as file:
-                json.dump(self.config, file, ensure_ascii=False, indent=2)
-                file.write("\n")
+                
+                content = json.dumps(self.config, ensure_ascii=False, indent=2)
+
+                # Compacta a lista de vertices
+                content = re.sub(
+                    r'("vertices": )\[\s*([\d,\s]+?)\s*\]',
+                    lambda m: m.group(1) + "[" + ", ".join(
+                        re.findall(r"\d+", m.group(2))
+                    ) + "]",
+                    content
+                )
+
+                # Compacta cada par de vertices dentro de edges
+                content = re.sub(
+                    r'\[\s*(\d+),\s*(\d+)\s*\]',
+                    r'[\1, \2]',
+                    content
+                )
+
+                with destination.open("w", encoding="utf-8", newline="\n") as file:
+                    file.write(content + "\n")
+
         except OSError as error:
             raise ValueError(f"Nao foi possivel exportar a fase: {error}") from error
         self.active_path = destination
