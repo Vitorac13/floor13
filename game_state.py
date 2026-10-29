@@ -8,8 +8,12 @@ from level import Collectible, ItemKind, Level
 class GameState:
     def __init__(self, level: Level) -> None:
         self.level = level
-        self.current_floor = level.start_floor
-        self.visited_floors = {level.start_floor}
+        self.reset()
+
+    def reset(self) -> None:
+        self.current_floor = self.level.start_floor
+        self.visited_sequence = [self.level.start_floor]
+        self.visited_floors = {self.level.start_floor}
         self.collected_required: set[str] = set()
         self.collected_bonus: set[str] = set()
         self.collected_keys: set[str] = set()
@@ -79,6 +83,7 @@ class GameState:
             return f"Conexao bloqueada. Falta a chave: {names}."
 
         self.current_floor = destination
+        self.visited_sequence.append(destination)
         self.visited_floors.add(destination)
         self.movement_count += 1
         if destination == self.level.start_floor and self.movement_count > 1:

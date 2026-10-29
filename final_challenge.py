@@ -7,6 +7,7 @@ from math import isclose
 
 from algorithms import dijkstra, is_connected
 from graph import Graph
+from level import Level
 from level_manager import LevelManager
 
 
@@ -25,12 +26,16 @@ class FinalChallenge:
 class FinalChallengeManager:
     @staticmethod
     def create_the_exit() -> FinalChallenge:
-        level = LevelManager.load_level("phase-05")
-        challenge_config = LevelManager.load_phase_config("phase-05").get(
-            "challenge", {}
+        return FinalChallengeManager.create_for_level(
+            LevelManager.load_level("phase-05")
         )
-        destination = challenge_config.get("destination_floor", level.exit_floor)
-        return_floor = challenge_config.get("return_floor", level.start_floor)
+
+    @staticmethod
+    def create_for_level(level: Level) -> FinalChallenge:
+        destination = level.challenge_parameters.get(
+            "destination_floor", level.exit_floor
+        )
+        return_floor = level.challenge_parameters.get("return_floor", level.start_floor)
 
         outbound = dijkstra(level.graph, level.start_floor, destination)
         returning = dijkstra(level.graph, destination, return_floor)

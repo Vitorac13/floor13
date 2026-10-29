@@ -776,3 +776,126 @@ chaves, saída bloqueada, pontuação sem duplicidade, progressão, salvamento,
 recuperação de dados inválidos, navegação e o fluxo Pygame de fase, resultado
 e desbloqueio. As regras anteriores dos cinco desafios também permanecem
 cobertas.
+
+## Descoberta automática e esquema dos arquivos de fase
+
+O jogo procura `*.json` diretamente em `levels/`, valida cada arquivo e carrega
+os válidos em ordem crescente de `number` (com `id` como desempate
+determinístico). IDs e números de exibição devem ser únicos; arquivos em
+conflito são todos ignorados. Um arquivo inválido não impede o carregamento dos
+demais: o menu mostra a quantidade de erros e avisos, e o log registra o
+arquivo e o diagnóstico. Grafos desconectados são avisos de design; ainda
+precisam permitir a conclusão e os desafios especializados podem impor
+requisitos matemáticos adicionais.
+
+O formato atual dos cinco JSONs foi preservado. Campos desconhecidos são
+rejeitados para detectar erros de digitação.
+
+| Campo | Obrigatório | Regra |
+|---|---|---|
+| `id` | sim | Texto estável, minúsculo, com letras/números separados por hífen; único no diretório. |
+| `number` | sim | Inteiro positivo e único; ordena/exibe fases, não identifica o save. Lacunas são permitidas. |
+| `name` | sim | Texto não vazio apresentado no jogo. |
+| `graph.vertices` | sim | Lista não vazia de inteiros únicos. |
+| `graph.edges` | sim | Lista de `[u, v]` ou `[u, v, custo]`; grafo não direcionado, sem arestas duplicadas (inclusive invertidas). |
+| `start_floor`, `exit_floor` | sim | Inteiros que existem em `graph.vertices`. |
+| `items` | não | Lista vazia por padrão. Cada item contém `id`, `name`, `floor` e `type`; `score` (inteiro >= 0) e `key` (booleano) são opcionais. |
+| `exit_requirements` | não | `keys` referencia itens-chave e `challenges` aceita o identificador de conclusão do tipo escolhido. Ambos são listas vazias por padrão. |
+| `connection_requirements` | não | Lista de `{ "from": u, "to": v, "keys": ["item-id"] }`; aresta e chaves devem existir. |
+| `challenge` | sim | Objeto com `type` registrado e parâmetros do tipo, abaixo. |
+| `optional_objectives` | não | Lista vazia por padrão; cada objetivo tem `id`, `name`, `description`, `type` e `reward` (inteiro >= 0). `floor` é obrigatório para `visit_floor`. |
+| `rewards` | não | `completion` é a recompensa por concluir (inteiro >= 0; padrão 300). |
+
+Tipos de item aceitos: `essential`, `bonus` e `key`. A chave é um item
+essencial; `key: true` também pode marcar um item `essential`. Pontuações padrão:
+100 para essenciais/chaves e 200 para bônus. IDs de itens e objetivos devem ser
+únicos dentro da fase. Tipos de objetivo aceitos: `visit_floor`,
+`collect_all_bonus` e `return_to_start`.
+
+Tipos de desafio registrados e parâmetros:
+
+| `challenge.type` | Parâmetros | Regra especializada |
+|---|---|---|
+| `collect_and_exit` | nenhum | Estado genérico; exige coletar todos os itens essenciais e cumprir requisitos da saída. |
+| `hamilton` | `end_floor` (opcional; padrão `exit_floor`) | Visitar cada vértice exatamente uma vez e terminar no destino. |
+| `economic` | `destination_floor` (opcional; padrão `exit_floor`) | Encontrar e percorrer uma rota de custo mínimo; os custos devem ser positivos. |
+| `euler` | `reference_trail` (obrigatório) | Percorrer cada aresta exatamente uma vez; valida trilha, início e fim. |
+| `final` | `destination_floor`, `return_floor` (opcionais; padrões saída/início) | Fazer ida e retorno pelo menor custo total; custos positivos e rotas de ida com custos diferentes. |
+
+Custos genéricos são números finitos não negativos; desafios econômico e final
+exigem custos estritamente positivos. A validação procura uma rota de conclusão
+que respeite itens essenciais, chaves da saída e bloqueios. Um grafo com
+componentes isolados é aceito quando a rota necessária continua possível, mas
+gera aviso para revisão.
+
+Por enquanto, somente `collect_and_exit` pode declarar itens essenciais e
+chaves de saída: os estados especializados concluem por regras matemáticas
+próprias e não delegam essa condição ao estado genérico. Todos os tipos aceitam
+itens bônus. Um desafio novo que precise integrar itens obrigatórios também
+precisa de uma implementação Python explícita dessa integração; use
+`collect_and_exit` quando a conclusão deve depender da coleta configurada.
+
+### Exemplo completo: nova fase de exploração
+
+Salve como `levels/phase-06.json` (o nome recomendado é `<id>.json`):
+
+```json
+{
+  "id": "phase-06",
+  "number": 6,
+  "name": "A ramificação",
+  "graph": {
+    "vertices": [1, 2, 3, 4, 5],
+    "edges": [[1, 2], [2, 3], [3, 4], [4, 2], [4, 5]]
+  },
+  "start_floor": 1,
+  "exit_floor": 5,
+  "items": [
+    {
+      "id": "door-key",
+      "name": "Chave da saída",
+      "floor": 2,
+      "type": "key",
+      "score": 50
+    },
+    {
+      "id": "bonus-note",
+      "name": "Bilhete bônus",
+      "floor": 3,
+      "type": "bonus",
+      "score": 20
+    }
+  ],
+  "exit_requirements": {
+    "keys": ["door-key"],
+    "challenges": []
+  },
+  "connection_requirements": [
+    {"from": 4, "to": 5, "keys": ["door-key"]}
+  ],
+  "challenge": {"type": "collect_and_exit"},
+  "optional_objectives": [],
+  "rewards": {"completion": 40}
+}
+```
+
+O percurso de exemplo pode ir de 1 a 2 para coletar a chave, explorar 3 e 4,
+retornar de 4 a 2 pela ramificação e então abrir a conexão bloqueada até 5.
+Adicionar esse JSON válido basta para ele aparecer no menu; não edite Python.
+Com numeração lacunar, a progressão desbloqueia a próxima fase disponível na
+ordem `(number, id)`, não exige números consecutivos.
+
+Os saves novos usam IDs estáveis (`completed_level_ids`, `level_scores`,
+`best_results` e `last_results` indexados pelo ID). Saves legados versão 1, que
+indexavam resultados pelo número, são migrados uma única vez usando a relação
+entre `number` e `id` encontrada no primeiro carregamento; IDs removidos são
+preservados como histórico e não transferem seus resultados para outra fase.
+Depois da migração, renumerar uma fase não muda sua identidade.
+
+Para criar um desafio realmente novo, implemente em Python o estado (com
+`current_floor`, `is_complete`, `visited_sequence`, `move_to()` e `reset()`),
+sua validação e sua apresentação especializada quando necessário; registre o
+`challenge.type`, os nomes de parâmetros permitidos e seu identificador de
+conclusão em `challenge_registry.py`. O restante da descoberta, menu, ordem e
+progressão continua automático. Configurações JSON não substituem algoritmos
+ou regras especializadas arbitrárias.

@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
+from typing import Any
 
 from graph import Graph
 
@@ -54,6 +55,8 @@ class Level:
     required_challenges: tuple[str, ...] = ()
     optional_objectives: tuple[OptionalObjective, ...] = ()
     completion_score: int = 300
+    challenge_type: str = "collect_and_exit"
+    challenge_parameters: dict[str, Any] = field(default_factory=dict)
 
     @property
     def items_by_floor(self) -> dict[int, tuple[Collectible, ...]]:

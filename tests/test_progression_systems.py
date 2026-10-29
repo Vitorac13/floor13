@@ -189,9 +189,11 @@ class ApplicationFlowTests(unittest.TestCase):
                 app._travel()
 
                 self.assertEqual(app.menu.screen, Screen.RESULT)
-                self.assertEqual(app.progress_manager.recommended_level, 2)
+                self.assertEqual(app.progress_manager.recommended_level, "phase-02")
                 self.assertEqual(app.saved_progress["completed_levels"], [1])
-                self.assertEqual(app.saved_progress["best_results"]["1"]["score"], 600)
+                self.assertEqual(
+                    app.saved_progress["best_results"]["phase-01"]["score"], 600
+                )
 
                 app._draw()
                 app._continue_after_result()
@@ -226,7 +228,9 @@ class ApplicationFlowTests(unittest.TestCase):
                         ) or destination == bonus_floors.get(phase):
                             app._collect_items()
                     self.assertEqual(app.menu.screen, Screen.RESULT)
-                    self.assertIn(phase, app.progress_manager.completed_levels)
+                    self.assertIn(
+                        f"phase-0{phase}", app.progress_manager.completed_levels
+                    )
                     if phase < 5:
                         app._continue_after_result()
                         self.assertEqual(app.active_phase, phase + 1)

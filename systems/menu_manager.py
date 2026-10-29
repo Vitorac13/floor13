@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from systems.progress_manager import ProgressManager
+from systems.progress_manager import LevelKey, ProgressManager
 
 
 class Screen(Enum):
@@ -17,8 +17,8 @@ class Screen(Enum):
 class MenuManager:
     def __init__(self) -> None:
         self.screen = Screen.MAIN_MENU
-        self.active_level: int | None = None
-        self.result_level: int | None = None
+        self.active_level: LevelKey | None = None
+        self.result_level: LevelKey | None = None
 
     def show_main_menu(self) -> None:
         self.screen = Screen.MAIN_MENU
@@ -34,7 +34,7 @@ class MenuManager:
         self.start_level(next_level, progress)
         return next_level
 
-    def start_level(self, level: int, progress: ProgressManager) -> bool:
+    def start_level(self, level: LevelKey, progress: ProgressManager) -> bool:
         if not progress.can_start(level):
             return False
         self.active_level = level
@@ -42,7 +42,7 @@ class MenuManager:
         self.screen = Screen.GAME
         return True
 
-    def show_result(self, level: int) -> None:
+    def show_result(self, level: LevelKey) -> None:
         self.result_level = level
         self.screen = Screen.RESULT
 

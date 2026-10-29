@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from graph import Graph
+from level import Level
 from level_manager import LevelManager
 
 
@@ -19,14 +20,19 @@ class HamiltonChallenge:
 class HamiltonChallengeManager:
     @staticmethod
     def create_no_turning_back() -> HamiltonChallenge:
-        config = LevelManager.load_phase_config("phase-02")
-        level = LevelManager.load_level("phase-02")
-        challenge_config = config.get("challenge", {})
+        return HamiltonChallengeManager.create_for_level(
+            LevelManager.load_level("phase-02")
+        )
+
+    @staticmethod
+    def create_for_level(level: Level) -> HamiltonChallenge:
         challenge = HamiltonChallenge(
             name=level.name,
             graph=level.graph,
             start_floor=level.start_floor,
-            end_floor=challenge_config.get("end_floor", level.exit_floor),
+            end_floor=level.challenge_parameters.get(
+                "end_floor", level.exit_floor
+            ),
         )
         HamiltonChallengeManager.validate(challenge)
         return challenge

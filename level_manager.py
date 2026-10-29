@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+import logging
+import re
 from collections import deque
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from algorithms import is_connected
+from challenge_registry import ChallengeRegistry
 from graph import Graph
 from level import (
     Collectible,
@@ -18,9 +22,35 @@ from level import (
 )
 
 DEFAULT_LEVELS_DIR = Path(__file__).resolve().parent / "levels"
+LOGGER = logging.getLogger(__name__)
+IDENTIFIER_PATTERN = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+
+
+@dataclass(frozen=True)
+class LevelDiagnostic:
+    path: Path
+    severity: str
+    message: str
+
+
+@dataclass(frozen=True)
+class LevelDiscoveryResult:
+    levels: tuple[Level, ...]
+    diagnostics: tuple[LevelDiagnostic, ...]
 
 
 class LevelManager:
+    @staticmethod
+    def _reject_unknown_fields(
+        identifier: str, config: dict[str, Any], allowed: set[str], context: str
+    ) -> None:
+        unknown = set(config) - allowed
+        if unknown:
+            names = ", ".join(sorted(unknown))
+            raise ValueError(
+                f"Fase {identifier}: campo(s) desconhecido(s) em {context}: {names}."
+            )
+
     @staticmethod
     def create_first_contact() -> Level:
         """Mantem a API anterior enquanto le a configuracao atual em JSON."""
@@ -30,6 +60,8 @@ class LevelManager:
     def load_phase_config(
         identifier: str, levels_dir: str | Path | None = None
     ) -> dict[str, Any]:
+        if not IDENTIFIER_PATTERN.fullmatch(identifier):
+            raise ValueError(f"Identificador de fase invalido: {identifier!r}.")
         directory = Path(levels_dir) if levels_dir is not None else DEFAULT_LEVELS_DIR
         path = directory / f"{identifier}.json"
         try:
@@ -42,8 +74,96 @@ class LevelManager:
                 f"JSON invalido em {path}, linha {error.lineno}, "
                 f"coluna {error.colno}: {error.msg}"
             ) from error
+        except RecursionError as error:
+            raise ValueError(f"JSON excessivamente aninhado em {path}.") from error
         if not isinstance(data, dict):
             raise ValueError(f"A configuracao da fase em {path} deve ser um objeto.")
+        return data
+
+    @classmethod
+    def discover_levels(
+        cls, levels_dir: str | Path | None = None
+    ) -> LevelDiscoveryResult:
+        directory = Path(levels_dir) if levels_dir is not None else DEFAULT_LEVELS_DIR
+        diagnostics: list[LevelDiagnostic] = []
+        candidates: list[tuple[Path, Level]] = []
+        if not directory.is_dir():
+            return LevelDiscoveryResult(
+                (),
+                (
+                    LevelDiagnostic(
+                        directory, "error", "A pasta de fases nao existe."
+                    ),
+                ),
+            )
+        for path in sorted(directory.glob("*.json"), key=lambda item: item.name.casefold()):
+            try:
+                config = cls._read_config(path)
+                level = cls.from_config(config)
+                cls.validate(level)
+                candidates.append((path, level))
+            except (OSError, ValueError) as error:
+                diagnostics.append(LevelDiagnostic(path, "error", str(error)))
+                LOGGER.error("Fase ignorada em %s: %s", path, error)
+
+        rejected: set[Path] = set()
+        for label, key in (
+            ("identificador", lambda level: level.identifier),
+            ("numero", lambda level: level.number),
+        ):
+            groups: dict[object, list[tuple[Path, Level]]] = {}
+            for candidate in candidates:
+                groups.setdefault(key(candidate[1]), []).append(candidate)
+            for duplicate, matches in groups.items():
+                if len(matches) < 2:
+                    continue
+                paths = ", ".join(str(path) for path, _ in matches)
+                for path, _ in matches:
+                    rejected.add(path)
+                    diagnostics.append(
+                        LevelDiagnostic(
+                            path,
+                            "error",
+                            f"{label.capitalize()} duplicado {duplicate!r}; "
+                            f"arquivos conflitantes: {paths}.",
+                        )
+                    )
+                LOGGER.error(
+                    "Fases com %s duplicado %r: %s", label, duplicate, paths
+                )
+
+        levels = tuple(
+            level
+            for path, level in sorted(
+                candidates, key=lambda item: (item[1].number, item[1].identifier)
+            )
+            if path not in rejected
+        )
+        for path, level in candidates:
+            if path not in rejected and not is_connected(level.graph):
+                diagnostics.append(
+                    LevelDiagnostic(
+                        path,
+                        "warning",
+                        "Grafo desconectado; confirme que essa separacao e intencional.",
+                    )
+                )
+        return LevelDiscoveryResult(levels, tuple(diagnostics))
+
+    @staticmethod
+    def _read_config(path: Path) -> dict[str, Any]:
+        try:
+            with path.open(encoding="utf-8") as file:
+                data = json.load(file)
+        except json.JSONDecodeError as error:
+            raise ValueError(
+                f"JSON invalido na linha {error.lineno}, "
+                f"coluna {error.colno}: {error.msg}"
+            ) from error
+        except RecursionError as error:
+            raise ValueError("JSON excessivamente aninhado.") from error
+        if not isinstance(data, dict):
+            raise ValueError("A configuracao deve ser um objeto JSON.")
         return data
 
     @classmethod
@@ -64,6 +184,27 @@ class LevelManager:
     def from_config(cls, config: dict[str, Any]) -> Level:
         """Converte uma configuracao JSON validada em estruturas do jogo."""
         identifier = cls._string(config, "id")
+        if not IDENTIFIER_PATTERN.fullmatch(identifier):
+            raise ValueError(f"Fase: identificador invalido: {identifier!r}.")
+        cls._reject_unknown_fields(
+            identifier,
+            config,
+            {
+                "id",
+                "number",
+                "name",
+                "graph",
+                "start_floor",
+                "exit_floor",
+                "items",
+                "exit_requirements",
+                "connection_requirements",
+                "challenge",
+                "optional_objectives",
+                "rewards",
+            },
+            "fase",
+        )
         name = cls._string(config, "name")
         number = cls._integer(config, "number")
         start = cls._integer(config, "start_floor")
@@ -72,6 +213,9 @@ class LevelManager:
         graph_config = config.get("graph")
         if not isinstance(graph_config, dict):
             raise ValueError(f"Fase {identifier}: 'graph' deve ser um objeto.")
+        cls._reject_unknown_fields(
+            identifier, graph_config, {"vertices", "edges"}, "graph"
+        )
         vertices = graph_config.get("vertices")
         edges = graph_config.get("edges")
         if not isinstance(vertices, list) or not vertices:
@@ -114,7 +258,7 @@ class LevelManager:
                 )
             try:
                 graph.add_edge(first, second, weight)
-            except (TypeError, ValueError) as error:
+            except (OverflowError, TypeError, ValueError) as error:
                 raise ValueError(
                     f"Fase {identifier}: peso invalido na aresta "
                     f"{first}-{second}: {error}"
@@ -130,6 +274,9 @@ class LevelManager:
             raise ValueError(
                 f"Fase {identifier}: 'exit_requirements' deve ser um objeto."
             )
+        cls._reject_unknown_fields(
+            identifier, requirements, {"keys", "challenges"}, "exit_requirements"
+        )
         key_ids = requirements.get("keys", [])
         challenge_ids = requirements.get("challenges", [])
         if not isinstance(key_ids, list) or any(
@@ -155,12 +302,17 @@ class LevelManager:
         if not isinstance(challenge_config, dict):
             raise ValueError(f"Fase {identifier}: 'challenge' deve ser um objeto.")
         challenge_type = challenge_config.get("type")
+        if not isinstance(challenge_type, str):
+            raise ValueError(
+                f"Fase {identifier}: 'challenge.type' e obrigatorio e deve ser texto."
+            )
         cls._validate_challenge_config(
             identifier, challenge_type, challenge_config, graph, start, exit_floor
         )
         rewards = config.get("rewards", {})
         if not isinstance(rewards, dict):
             raise ValueError(f"Fase {identifier}: 'rewards' deve ser um objeto.")
+        cls._reject_unknown_fields(identifier, rewards, {"completion"}, "rewards")
         completion_score = rewards.get("completion", 300)
         if type(completion_score) is not int or completion_score < 0:
             raise ValueError(f"Fase {identifier}: recompensa de conclusao invalida.")
@@ -178,6 +330,10 @@ class LevelManager:
             required_challenges=tuple(challenge_ids),
             optional_objectives=objectives,
             completion_score=completion_score,
+            challenge_type=challenge_type,
+            challenge_parameters={
+                key: value for key, value in challenge_config.items() if key != "type"
+            },
         )
 
     @staticmethod
@@ -188,6 +344,9 @@ class LevelManager:
             raise ValueError(
                 f"Fase {identifier}: requisito de conexao deve ser um objeto."
             )
+        LevelManager._reject_unknown_fields(
+            identifier, entry, {"from", "to", "keys"}, "connection_requirements"
+        )
         first = entry.get("from")
         second = entry.get("to")
         key_ids = entry.get("keys")
@@ -214,20 +373,17 @@ class LevelManager:
         start: int,
         exit_floor: int,
     ) -> None:
-        known_types = {
-            "collect_and_exit",
-            "hamilton",
-            "economic",
-            "euler",
-            "final",
-        }
-        if challenge_type is None:
-            return
-        if not isinstance(challenge_type, str) or challenge_type not in known_types:
+        if challenge_type not in ChallengeRegistry.types():
             raise ValueError(
                 f"Fase {identifier}: tipo de desafio desconhecido: "
                 f"{challenge_type!r}."
             )
+        LevelManager._reject_unknown_fields(
+            identifier,
+            config,
+            ChallengeRegistry.allowed_fields(challenge_type),
+            "challenge",
+        )
         endpoint_fields = {
             "hamilton": ("end_floor", exit_floor),
             "economic": ("destination_floor", exit_floor),
@@ -277,6 +433,9 @@ class LevelManager:
     def _parse_item(identifier: str, entry: Any) -> Collectible:
         if not isinstance(entry, dict):
             raise ValueError(f"Fase {identifier}: cada item deve ser um objeto.")
+        LevelManager._reject_unknown_fields(
+            identifier, entry, {"id", "name", "floor", "type", "key", "score"}, "item"
+        )
         item_id = entry.get("id")
         name = entry.get("name")
         floor = entry.get("floor")
@@ -321,6 +480,12 @@ class LevelManager:
                 raise ValueError(
                     f"Fase {identifier}: cada objetivo opcional deve ser um objeto."
                 )
+            LevelManager._reject_unknown_fields(
+                identifier,
+                entry,
+                {"id", "name", "description", "type", "reward", "floor"},
+                "optional_objectives",
+            )
             objective_id = entry.get("id")
             name = entry.get("name")
             description = entry.get("description")
@@ -389,9 +554,6 @@ class LevelManager:
             raise ValueError("O andar de saida nao existe no grafo.")
         if type(level.number) is not int or level.number < 1:
             raise ValueError("O numero da fase deve ser positivo.")
-        if not is_connected(level.graph):
-            raise ValueError("O grafo da fase deve ser conectado.")
-
         identifiers = [item.identifier for item in level.items]
         if len(identifiers) != len(set(identifiers)):
             raise ValueError("Os identificadores dos itens devem ser unicos.")
@@ -408,6 +570,13 @@ class LevelManager:
             raise ValueError("Os desafios obrigatorios devem ter identificadores.")
         required = [item for item in level.items if item.kind is ItemKind.REQUIRED]
         bonuses = [item for item in level.items if item.kind is ItemKind.BONUS]
+        if level.challenge_type != "collect_and_exit" and (
+            required or level.exit_requires_keys
+        ):
+            raise ValueError(
+                f"O desafio {level.challenge_type!r} nao valida itens essenciais "
+                "ou chaves da saida."
+            )
         if any(type(item.score) is not int or item.score < 0 for item in level.items):
             raise ValueError("A pontuacao dos itens deve ser um inteiro nao negativo.")
         if any(item.is_key and item.kind is ItemKind.BONUS for item in level.items):
@@ -420,6 +589,17 @@ class LevelManager:
             raise ValueError("Toda chave exigida pela saida deve existir como item chave.")
         if len(level.exit_requires_keys) != len(set(level.exit_requires_keys)):
             raise ValueError("Os identificadores de chave exigidos devem ser unicos.")
+        if len(level.required_challenges) != len(set(level.required_challenges)):
+            raise ValueError("Os desafios exigidos pela saida devem ser unicos.")
+        completion_id = ChallengeRegistry.completion_id(level.challenge_type)
+        if any(
+            challenge_id != completion_id
+            for challenge_id in level.required_challenges
+        ):
+            raise ValueError(
+                "Os desafios exigidos pela saida devem corresponder ao "
+                f"desafio configurado ({completion_id})."
+            )
         configured_connections: set[frozenset[int]] = set()
         key_items = {
             item.identifier: item for item in level.items if item.is_key
@@ -453,6 +633,7 @@ class LevelManager:
             )
         if not cls.has_completion_route(level):
             raise ValueError("Nao existe rota viavel para concluir a fase.")
+        ChallengeRegistry.create_state(level)
 
     @staticmethod
     def has_completion_route(level: Level) -> bool:
