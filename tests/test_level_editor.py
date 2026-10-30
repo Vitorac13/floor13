@@ -12,9 +12,11 @@ import pygame
 
 from level_editor import LevelEditor, new_level_config
 from level_manager import DEFAULT_LEVELS_DIR, LevelManager
+from game_state import GameState
 from main import ElevatorPrototype
 from economic_challenge import EconomicChallengeManager
 from systems.menu_manager import Screen
+from systems.item_manager import ItemProgress
 from systems.score_manager import AttemptResult
 
 
@@ -53,6 +55,12 @@ class LevelEditorTests(unittest.TestCase):
                 {"key": pygame.K_RETURN, "mod": 0, "unicode": "\r"},
             )
         )
+
+    def _choose_combo_option(self, combo: str, choice: str) -> None:
+        self.editor.draw(self.screen)
+        self._click(self.editor._buttons[f"{combo}_combo"].center)
+        self.editor.draw(self.screen)
+        self._click(self.editor._buttons[f"{combo}:{choice}"].center)
 
     def test_mouse_adds_selects_drags_and_deletes_vertices_and_edges(self) -> None:
         self.editor.draw(self.screen)
@@ -293,8 +301,7 @@ class LevelEditorTests(unittest.TestCase):
         self.editor.draw(self.screen)
         self._click(self.editor._field_rects["item_score"].center)
         self._type_text("75")
-        self.editor.draw(self.screen)
-        self._click((790, 602))
+        self._choose_combo_option("item_type", "key")
         self.assertTrue(self.editor.items[0]["key"])
 
         self.editor.draw(self.screen)
@@ -306,19 +313,32 @@ class LevelEditorTests(unittest.TestCase):
         self._click(self.editor._field_rects["item_name"].center)
         self._type_text("Gema bonus")
         self.editor.draw(self.screen)
-        self._click(self.editor._field_rects["item_type"].center)
-        self._type_text("bonus")
+        self._choose_combo_option("item_type", "bonus")
         self.editor.draw(self.screen)
         self._click(self.editor._field_rects["item_score"].center)
         self._type_text("25")
 
         self.editor.validate()
 
-        self.assertEqual(self.editor.items[0]["type"], "essential")
+        self.assertEqual(self.editor.items[0]["type"], "key")
         self.assertEqual(self.editor.items[0]["floor"], 1)
         self.assertEqual(self.editor.items[1]["type"], "bonus")
         self.assertEqual(self.editor.items[1]["floor"], 2)
         self.assertEqual(self.editor.items[1]["score"], 25)
+
+    def test_item_type_combobox_supports_keyboard_navigation(self) -> None:
+        index = self.editor.add_item()
+        self.editor.draw(self.screen)
+        self._click(self.editor._buttons["item_type_combo"].center)
+        for key in (pygame.K_DOWN, pygame.K_RETURN):
+            self.editor.handle_event(
+                pygame.event.Event(
+                    pygame.KEYDOWN,
+                    {"key": key, "mod": 0, "unicode": ""},
+                )
+            )
+        self.assertEqual(self.editor.items[index]["type"], "bonus")
+        self.assertFalse(self.editor.items[index]["key"])
 
     def test_optional_objective_can_be_configured_and_removed_visually(self) -> None:
         self.editor.add_vertex((480, 330))
@@ -346,6 +366,90 @@ class LevelEditorTests(unittest.TestCase):
         self.editor.draw(self.screen)
         self._click((874, 138))
         self.assertEqual(self.editor.objectives, [])
+
+    def test_supported_item_and_objective_types_round_trip_and_keep_game_rules(self) -> None:
+        self.editor.add_vertex((480, 330))
+        self.editor.add_edge(1, 2)
+        self.editor.config["exit_floor"] = 1
+
+        for item_type, identifier, floor in (
+            ("essential", "required-part", 1),
+            ("key", "door-key", 1),
+            ("bonus", "bonus-map", 2),
+        ):
+            index = self.editor.add_item()
+            self._choose_combo_option("item_type", item_type)
+            self.editor.update_item(
+                index,
+                id=identifier,
+                name=identifier,
+                floor=floor,
+                score=100,
+            )
+        self.editor.config["exit_requirements"]["keys"] = ["door-key"]
+
+        for objective_type in (
+            "visit_floor",
+            "collect_all_bonus",
+            "return_to_start",
+        ):
+            index = self.editor.add_objective()
+            self._choose_combo_option("objective_type", objective_type)
+            self.assertEqual(self.editor.objectives[index]["type"], objective_type)
+            self.assertEqual(self.editor.objectives[index]["floor"], 2)
+
+        first_objective = self.editor.objectives[0]
+        self.editor.selected_objective = 0
+        self._choose_combo_option("objective_type", "collect_all_bonus")
+        self._choose_combo_option("objective_type", "visit_floor")
+        self.assertEqual(first_objective["floor"], 2)
+        self.editor.config["id"] = "combo-round-trip"
+        self.editor.config["number"] = 1
+
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "combo-round-trip.json"
+            self.editor.export_file(output)
+            exported = json.loads(output.read_text(encoding="utf-8"))
+            loaded = LevelManager.load_level("combo-round-trip", directory)
+
+        self.assertEqual(
+            [item["type"] for item in exported["items"]],
+            ["essential", "key", "bonus"],
+        )
+        self.assertEqual(
+            [objective["type"] for objective in exported["optional_objectives"]],
+            ["visit_floor", "collect_all_bonus", "return_to_start"],
+        )
+        self.assertEqual(loaded.exit_requires_keys, ("door-key",))
+
+        game = GameState(loaded)
+        progress = ItemProgress(loaded)
+        game.collect_items_here()
+        progress.collect(1)
+        self.assertEqual(game.collected_required, {"required-part", "door-key"})
+        self.assertEqual(game.collected_keys, {"door-key"})
+        self.assertEqual(progress.collected_keys, {"door-key"})
+        self.assertIn("Voce chegou", game.move_to(2))
+        progress.record_movement(2)
+        game.collect_items_here()
+        progress.collect(2)
+        self.assertIn("Fase concluida", game.move_to(1))
+        progress.record_movement(1)
+        self.assertEqual(
+            {objective.kind for objective in progress.completed_objectives},
+            {"visit_floor", "collect_all_bonus", "return_to_start"},
+        )
+
+        self.editor.tab = "objectives"
+        self.editor.draw(self.screen)
+        self._click(self.editor._objective_rects[0][1].center)
+        self.editor.draw(self.screen)
+        self._click(self.editor._field_rects["objective_id"].center)
+        self._type_text("edited-objective")
+        self.assertEqual(self.editor.objectives[0]["id"], "edited-objective")
+        self.editor.draw(self.screen)
+        self._click(self.editor._buttons["remove_objective"].center)
+        self.assertEqual(len(self.editor.objectives), 2)
 
     def test_exit_requirements_can_be_selected_from_the_editor(self) -> None:
         self.editor.add_vertex((480, 330))
@@ -761,7 +865,61 @@ class NavigationExitTests(unittest.TestCase):
             )
             app._handle_events()
             self.assertEqual(app.level_select_offset, 1)
-            app.level_select_offset = 2
+            app._draw_level_select()
+            track, thumb = app._level_select_scroll_metrics()
+            self.assertLess(thumb.height, track.height)
+            pygame.event.post(
+                pygame.event.Event(
+                    pygame.MOUSEBUTTONDOWN,
+                    {"button": 1, "pos": (track.centerx, thumb.bottom + 5)},
+                )
+            )
+            app._handle_events()
+            self.assertEqual(app.level_select_offset, 2)
+
+            app._draw_level_select()
+            track, thumb = app._level_select_scroll_metrics()
+            pygame.event.post(
+                pygame.event.Event(
+                    pygame.MOUSEBUTTONDOWN,
+                    {"button": 1, "pos": (track.centerx, track.top + 5)},
+                )
+            )
+            app._handle_events()
+            self.assertEqual(app.level_select_offset, 0)
+
+            app._draw_level_select()
+            track, thumb = app._level_select_scroll_metrics()
+            pygame.event.post(
+                pygame.event.Event(
+                    pygame.MOUSEBUTTONDOWN,
+                    {"button": 1, "pos": thumb.center},
+                )
+            )
+            app._handle_events()
+            self.assertTrue(app.level_select_dragging)
+            pygame.event.post(
+                pygame.event.Event(
+                    pygame.MOUSEMOTION,
+                    {
+                        "pos": (track.centerx, track.bottom - 1),
+                        "rel": (0, 100),
+                        "buttons": (1, 0, 0),
+                    },
+                )
+            )
+            app._handle_events()
+            self.assertEqual(app.level_select_offset, 2)
+            self.assertEqual(app.menu.screen, Screen.LEVEL_SELECT)
+            pygame.event.post(
+                pygame.event.Event(
+                    pygame.MOUSEBUTTONUP,
+                    {"button": 1, "pos": (track.centerx, track.bottom - 1)},
+                )
+            )
+            app._handle_events()
+            self.assertFalse(app.level_select_dragging)
+
             app._draw_level_select()
             self.assertEqual(
                 app._level_select_range_label(),
@@ -771,6 +929,59 @@ class NavigationExitTests(unittest.TestCase):
                 list(app.level_rects),
                 [f"phase-{number:02d}" for number in range(3, 9)],
             )
+            app.progress_manager.complete_level("phase-01")
+            app.progress_manager.complete_level("phase-02")
+            pygame.event.post(
+                pygame.event.Event(
+                    pygame.MOUSEBUTTONDOWN,
+                    {"button": 1, "pos": app.level_rects["phase-03"].center},
+                )
+            )
+            app._handle_events()
+            self.assertEqual(app.menu.screen, Screen.GAME)
+            self.assertEqual(app.active_level_id, "phase-03")
+
+            app.menu.show_level_select()
+            app.level_select_offset = 0
+            app._running = True
+            app._resize_window(1600, 1000)
+            app._draw_level_select()
+            track, thumb = app._level_select_scroll_metrics()
+            viewport, scale = app._content_viewport()
+
+            def window_position(position: tuple[int, int]) -> tuple[int, int]:
+                return (
+                    round(viewport.x + position[0] * scale),
+                    round(viewport.y + position[1] * scale),
+                )
+
+            pygame.event.post(
+                pygame.event.Event(
+                    pygame.MOUSEBUTTONDOWN,
+                    {"button": 1, "pos": window_position(thumb.center)},
+                )
+            )
+            app._handle_events()
+            pygame.event.post(
+                pygame.event.Event(
+                    pygame.MOUSEMOTION,
+                    {
+                        "pos": window_position((track.centerx, track.bottom - 1)),
+                        "rel": (100, 100),
+                        "buttons": (1, 0, 0),
+                    },
+                )
+            )
+            app._handle_events()
+            self.assertEqual(app.level_select_offset, 2)
+            pygame.event.post(
+                pygame.event.Event(
+                    pygame.MOUSEBUTTONUP,
+                    {"button": 1, "pos": window_position((track.centerx, track.bottom - 1))},
+                )
+            )
+            app._handle_events()
+            app._running = False
 
 
 if __name__ == "__main__":

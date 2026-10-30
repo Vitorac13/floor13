@@ -47,7 +47,7 @@ Na tela de jogo, a interface apresenta o andar atual e os destinos conectados. S
 | Continuar após o resultado | `Enter` | Botão de continuar |
 | Rejogar após o resultado | `R` | Botão de rejogar |
 | Escolher fase pelo número | Teclas `1` a `9` | Clique na fase |
-| Percorrer a lista de fases | — | Roda do mouse |
+| Percorrer a lista de fases | — | Roda do mouse, clique no trilho ou arraste o indicador |
 
 No menu principal, `Enter` continua e `S` abre a seleção de fases. No seletor, `Backspace` volta ao menu. Os comandos indicados na interface também podem ser acionados pelos botões.
 
@@ -137,7 +137,7 @@ A validação verifica, entre outras coisas, a existência dos andares inicial e
 
 ### Pelo editor visual
 
-Abra **Editor de fases** no menu. O editor permite criar ou abrir uma fase, posicionar andares, criar e remover conexões, editar andares inicial e de saída, configurar itens e objetivos, selecionar tipo e parâmetros de desafio e validar, salvar ou exportar o JSON.
+Abra **Editor de fases** no menu. O editor permite criar ou abrir uma fase, posicionar andares, criar e remover conexões, editar andares inicial e de saída, configurar itens e objetivos, selecionar tipo e parâmetros de desafio e validar, salvar ou exportar o JSON. As comboboxes de itens oferecem `essential`, `bonus` e `key`; as de objetivos oferecem `visit_floor`, `collect_all_bonus` e `return_to_start`. O campo de andar do objetivo aparece apenas para `visit_floor`; mudar o tipo não apaga o valor já configurado. As listas também aceitam navegação pelas setas do teclado.
 
 Uma fase só aparece no jogo quando o arquivo JSON está dentro da pasta configurada em `levels/` e passa pela validação. Depois de alterar os arquivos enquanto o jogo está aberto, reinicie-o para executar novamente a descoberta.
 

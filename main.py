@@ -71,6 +71,8 @@ class ElevatorPrototype:
         self.level_editor = LevelEditor(self.levels_dir, self._refresh_levels)
         self.item_progress: ItemProgress | None = None
         self.level_select_offset = 0
+        self.level_select_dragging = False
+        self.level_select_drag_offset = 0
         self.attempt_result: AttemptResult | None = None
         self.attempt_id = str(uuid4())
         self.attempt_started_at = time.monotonic()
@@ -230,15 +232,20 @@ class ElevatorPrototype:
                     self._cycle_destination(reverse)
                 continue
 
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self.level_select_dragging = False
+                continue
+            if event.type == pygame.MOUSEMOTION and self.level_select_dragging:
+                if self.menu.screen is Screen.LEVEL_SELECT:
+                    self._drag_level_select_thumb(event.pos[1])
+                else:
+                    self.level_select_dragging = False
+                continue
             if (
                 event.type == pygame.MOUSEWHEEL
                 and self.menu.screen is Screen.LEVEL_SELECT
             ):
-                page_size = 6
-                max_offset = max(0, len(self.phase_levels) - page_size)
-                self.level_select_offset = min(
-                    max(0, self.level_select_offset - event.y), max_offset
-                )
+                self._scroll_level_select(-event.y)
                 continue
 
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -256,6 +263,17 @@ class ElevatorPrototype:
                     if self.level_back_rect.collidepoint(event.pos):
                         self.menu.show_main_menu()
                         continue
+                    if len(self.phase_levels) > 6:
+                        track, thumb = self._level_select_scroll_metrics()
+                        if track.collidepoint(event.pos):
+                            if thumb.collidepoint(event.pos):
+                                self.level_select_dragging = True
+                                self.level_select_drag_offset = event.pos[1] - thumb.y
+                            else:
+                                self._scroll_level_select(
+                                    -6 if event.pos[1] < thumb.top else 6
+                                )
+                            continue
                     for phase, rect in self.level_rects.items():
                         if rect.collidepoint(event.pos):
                             self._start_phase(phase)
@@ -508,6 +526,44 @@ class ElevatorPrototype:
         self.saved_progress.update(self.progress_manager.to_dict())
         self.level_select_offset = min(
             self.level_select_offset, max(0, len(levels) - 6)
+        )
+
+    def _scroll_level_select(self, amount: int) -> None:
+        self.level_select_offset = min(
+            max(0, self.level_select_offset + amount),
+            max(0, len(self.phase_levels) - 6),
+        )
+
+    def _level_select_scroll_metrics(self) -> tuple[pygame.Rect, pygame.Rect]:
+        track = pygame.Rect(822, 150, 24, 378)
+        total = len(self.phase_levels)
+        if total <= 6:
+            return track, pygame.Rect(track.x, track.y, track.width, track.height)
+        thumb_height = min(
+            track.height,
+            max(36, round(track.height * 6 / total)),
+        )
+        max_offset = total - 6
+        thumb_top = track.top + round(
+            (track.height - thumb_height)
+            * min(max(self.level_select_offset, 0), max_offset)
+            / max_offset
+        )
+        return track, pygame.Rect(track.x, thumb_top, track.width, thumb_height)
+
+    def _drag_level_select_thumb(self, mouse_y: int) -> None:
+        track, thumb = self._level_select_scroll_metrics()
+        max_offset = max(0, len(self.phase_levels) - 6)
+        available = track.height - thumb.height
+        if max_offset == 0 or available <= 0:
+            self.level_select_offset = 0
+            return
+        thumb_top = min(
+            max(mouse_y - self.level_select_drag_offset, track.top),
+            track.bottom - thumb.height,
+        )
+        self.level_select_offset = round(
+            (thumb_top - track.top) * max_offset / available
         )
 
     def _replay_result(self) -> None:
@@ -1089,21 +1145,13 @@ class ElevatorPrototype:
                 (rect.x + 18, rect.y + 36),
             )
         if total > 6:
-            track = pygame.Rect(830, 150, 8, 378)
-            pygame.draw.rect(self.screen, PANEL_LIGHT, track, border_radius=4)
-            thumb_height = max(36, round(track.height * min(1.0, 6 / total)))
-            scroll_range = total - 6
-            thumb_top = track.top + round(
-                (track.height - thumb_height)
-                * self.level_select_offset
-                / scroll_range
+            track, thumb = self._level_select_scroll_metrics()
+            visible_track = pygame.Rect(track.centerx - 4, track.y, 8, track.height)
+            visible_thumb = pygame.Rect(
+                thumb.centerx - 4, thumb.y, 8, thumb.height
             )
-            pygame.draw.rect(
-                self.screen,
-                ACCENT,
-                pygame.Rect(track.x, thumb_top, track.width, thumb_height),
-                border_radius=4,
-            )
+            pygame.draw.rect(self.screen, PANEL_LIGHT, visible_track, border_radius=4)
+            pygame.draw.rect(self.screen, ACCENT, visible_thumb, border_radius=4)
         if self.phase_diagnostics:
             error_count = sum(
                 diagnostic.severity == "error"

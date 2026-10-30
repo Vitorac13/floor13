@@ -31,6 +31,16 @@ CHALLENGE_LABELS = {
     "euler": "Euler",
     "final": "Desafio final",
 }
+ITEM_TYPE_LABELS = {
+    "essential": "Essencial",
+    "bonus": "Bonus",
+    "key": "Chave",
+}
+OBJECTIVE_TYPE_LABELS = {
+    "visit_floor": "Visitar andar",
+    "collect_all_bonus": "Coletar todos os bonus",
+    "return_to_start": "Retornar ao inicio",
+}
 
 
 def new_level_config(levels_dir: str | Path | None = None) -> dict[str, Any]:
@@ -94,6 +104,8 @@ class LevelEditor:
         self.selection_anchor: int | None = None
         self.text_scroll_px = 0
         self.dropdown_open = False
+        self.active_combo: str | None = None
+        self.dropdown_selection_index = 0
         self.challenge_parameter_cache: dict[str, dict[str, Any]] = {}
         self.selected_edge: tuple[int, int] | None = None
         self._edge_rects: list[tuple[tuple[int, int], pygame.Rect]] = []
@@ -167,6 +179,7 @@ class LevelEditor:
         self.mode = "select"
         self.focused_field = None
         self.dropdown_open = False
+        self.active_combo = None
         self.selected_edge = None
         self.challenge_parameter_cache = {}
         self._cache_current_challenge_parameters()
@@ -193,6 +206,7 @@ class LevelEditor:
         self.mode = "select"
         self.focused_field = None
         self.dropdown_open = False
+        self.active_combo = None
         self.selected_edge = None
         self.challenge_parameter_cache = {}
         self._cache_current_challenge_parameters()
@@ -479,6 +493,26 @@ class LevelEditor:
             raise ValueError("O item selecionado nao existe.")
         self.items[index].update(changes)
 
+    def _set_item_type(self, index: int, item_type: str) -> None:
+        if item_type not in ITEM_TYPE_LABELS:
+            raise ValueError(f"Tipo de item desconhecido: {item_type!r}.")
+        item = self.items[index]
+        previous_type = item.get("type")
+        if previous_type == item_type:
+            if item_type == "key":
+                item["key"] = True
+            elif item_type == "bonus":
+                item["key"] = False
+            return
+        item["type"] = item_type
+        if item_type == "key":
+            item["key"] = True
+        elif item_type == "bonus" or previous_type == "key":
+            item["key"] = False
+        self._set_status(
+            f"Tipo do item atualizado: {ITEM_TYPE_LABELS[item_type]}."
+        )
+
     def remove_item(self, index: int) -> None:
         if not 0 <= index < len(self.items):
             raise ValueError("O item selecionado nao existe.")
@@ -552,6 +586,25 @@ class LevelEditor:
         self.tab = "objectives"
         self._set_status(f"Objetivo objective-{index} criado.")
         return self.selected_objective
+
+    def _set_objective_type(self, index: int, objective_type: str) -> None:
+        if objective_type not in OBJECTIVE_TYPE_LABELS:
+            raise ValueError(f"Tipo de objetivo desconhecido: {objective_type!r}.")
+        objective = self.objectives[index]
+        objective["type"] = objective_type
+        if objective_type == "visit_floor" and (
+            type(objective.get("floor")) is not int
+            or objective["floor"] not in self.vertices
+        ):
+            objective["floor"] = (
+                self.selected_vertex
+                or self.config.get("start_floor")
+                or self.vertices[0]
+            )
+        self._set_status(
+            f"Tipo de objetivo atualizado: {OBJECTIVE_TYPE_LABELS[objective_type]}. "
+            "Os parametros anteriores foram preservados."
+        )
 
     def remove_objective(self, index: int) -> None:
         if not 0 <= index < len(self.objectives):
@@ -722,28 +775,16 @@ class LevelEditor:
             self._draw_field(screen, key, label, pygame.Rect(652, 128 + index * 48, 276, 40))
         challenge = self.config.get("challenge", {})
         current_type = challenge.get("type") if isinstance(challenge, dict) else ""
-        label = CHALLENGE_LABELS.get(current_type, str(current_type))
-        combo_rect = pygame.Rect(652, 326, 276, 34)
-        self._button(
+        if not (self.dropdown_open and self.active_combo == "challenge"):
+            self._draw_challenge_parameters(screen, 374)
+        self._draw_combo(
             screen,
-            "challenge_combo",
-            f"Desafio: {label}  v",
-            combo_rect,
-            self._font(19),
-            active=self.dropdown_open,
+            "challenge",
+            f"Desafio: {CHALLENGE_LABELS.get(current_type, str(current_type))}",
+            pygame.Rect(652, 326, 276, 34),
+            self._challenge_types(),
+            CHALLENGE_LABELS,
         )
-        self._draw_challenge_parameters(screen, 374)
-        if self.dropdown_open:
-            for index, challenge_type in enumerate(self._challenge_types()):
-                rect = pygame.Rect(652, 361 + index * 30, 276, 28)
-                self._button(
-                    screen,
-                    f"challenge:{challenge_type}",
-                    CHALLENGE_LABELS.get(challenge_type, challenge_type),
-                    rect,
-                    self._font(18),
-                    active=challenge_type == current_type,
-                )
 
     def _draw_challenge_parameters(self, screen: pygame.Surface, top: int) -> None:
         challenge = self.config.get("challenge", {})
@@ -777,6 +818,96 @@ class LevelEditor:
             for challenge_type in preferred
             if challenge_type in supported
         ) + tuple(sorted(supported - set(preferred)))
+
+    def _draw_combo(
+        self,
+        screen: pygame.Surface,
+        combo: str,
+        label: str,
+        rect: pygame.Rect,
+        choices: tuple[str, ...],
+        labels: dict[str, str],
+    ) -> None:
+        combo_key = f"{combo}_combo"
+        self._button(
+            screen,
+            combo_key,
+            f"{label}  v",
+            rect,
+            self._font(18),
+            active=self.dropdown_open and self.active_combo == combo,
+        )
+        if not self.dropdown_open or self.active_combo != combo:
+            return
+        option_height = 24
+        option_step = 26
+        panel_bottom = 600
+        opens_up = rect.bottom + len(choices) * option_step > panel_bottom
+        for index, choice in enumerate(choices):
+            option_y = (
+                rect.y - (len(choices) - index) * option_step
+                if opens_up
+                else rect.bottom + 1 + index * option_step
+            )
+            option_rect = pygame.Rect(rect.x, option_y, rect.width, option_height)
+            self._button(
+                screen,
+                f"{combo}:{choice}",
+                labels.get(choice, choice),
+                option_rect,
+                self._font(18),
+                active=self.dropdown_selection_index == index,
+            )
+
+    def _combo_options(self, combo: str) -> tuple[str, ...]:
+        if combo == "challenge":
+            return self._challenge_types()
+        if combo == "item_type":
+            return tuple(ITEM_TYPE_LABELS)
+        if combo == "objective_type":
+            return tuple(OBJECTIVE_TYPE_LABELS)
+        raise ValueError(f"Combobox desconhecida: {combo!r}.")
+
+    def _combo_value(self, combo: str) -> str:
+        if combo == "challenge":
+            challenge = self.config.get("challenge", {})
+            value = challenge.get("type") if isinstance(challenge, dict) else None
+        elif combo == "item_type":
+            item = self._selected_item_config()
+            value = item.get("type") if item is not None else None
+        else:
+            objective = self._selected_objective_config()
+            value = objective.get("type") if objective is not None else None
+        return value if isinstance(value, str) else ""
+
+    def _toggle_combo(self, combo: str) -> None:
+        if self.dropdown_open and self.active_combo == combo:
+            self.dropdown_open = False
+            self.active_combo = None
+            return
+        self.active_combo = combo
+        self.dropdown_open = True
+        choices = self._combo_options(combo)
+        selected = self._combo_value(combo)
+        self.dropdown_selection_index = (
+            choices.index(selected) if selected in choices else 0
+        )
+
+    def _select_combo_option(self, combo: str, choice: str) -> None:
+        if choice not in self._combo_options(combo):
+            raise ValueError(f"Opcao invalida para {combo}: {choice!r}.")
+        if combo == "challenge":
+            self._set_challenge_type(choice)
+        elif combo == "item_type":
+            if self.selected_item is None:
+                raise ValueError("Selecione um item antes de alterar o tipo.")
+            self._set_item_type(self.selected_item, choice)
+        else:
+            if self.selected_objective is None:
+                raise ValueError("Selecione um objetivo antes de alterar o tipo.")
+            self._set_objective_type(self.selected_objective, choice)
+        self.dropdown_open = False
+        self.active_combo = None
 
     def _is_economic(self) -> bool:
         challenge = self.config.get("challenge", {})
@@ -839,6 +970,7 @@ class LevelEditor:
         elif self.mode == "edit_cost":
             self.mode = "select"
         self.dropdown_open = False
+        self.active_combo = None
         self.selected_edge = None
         self._set_status(
             f"Desafio selecionado: {CHALLENGE_LABELS.get(challenge_type, challenge_type)}. "
@@ -925,7 +1057,11 @@ class LevelEditor:
             self._item_rects.append((index, rect))
             selected = index == self.selected_item
             pygame.draw.rect(screen, ACCENT_DARK if selected else PANEL_LIGHT, rect, border_radius=4)
-            label = f"{item.get('id', '?')}  / andar {item.get('floor', '?')}  / {item.get('type', '?')}"
+            item_type = item.get("type", "?")
+            label = (
+                f"{item.get('id', '?')}  / andar {item.get('floor', '?')}  / "
+                f"{ITEM_TYPE_LABELS.get(item_type, item_type)}"
+            )
             screen.blit(font.render(label[:35], True, TEXT), (rect.x + 6, rect.y + 5))
         if len(self.items) > 6:
             screen.blit(font.render("Use a roda do mouse para percorrer itens.", True, MUTED), (652, 340))
@@ -933,12 +1069,38 @@ class LevelEditor:
             screen.blit(font.render("Selecione ou adicione um item.", True, MUTED), (652, 368))
             return
         item = self.items[self.selected_item]
-        for index, (key, label) in enumerate(
-            (("item_id", "ID"), ("item_name", "Nome"), ("item_floor", "Andar"), ("item_type", "Tipo"), ("item_score", "Pontos"))
+        for key, label, x, y in (
+            ("item_id", "ID", 652, 366),
+            ("item_name", "Nome", 794, 366),
+            ("item_floor", "Andar", 652, 408),
+            ("item_score", "Pontos", 794, 408),
         ):
-            self._draw_field(screen, key, label, pygame.Rect(652, 366 + index * 43, 276, 36), item=item)
+            self._draw_field(
+                screen,
+                key,
+                label,
+                pygame.Rect(x, y, 134, 38),
+                item=item,
+            )
+        item_type = item.get("type", "essential")
+        self._draw_combo(
+            screen,
+            "item_type",
+            f"Tipo: {ITEM_TYPE_LABELS.get(item_type, str(item_type))}",
+            pygame.Rect(652, 536, 276, 32),
+            tuple(ITEM_TYPE_LABELS),
+            ITEM_TYPE_LABELS,
+        )
         is_key = bool(item.get("key", item.get("type") == "key"))
-        self._button(screen, "toggle_key", f"Chave: {'sim' if is_key else 'nao'}", pygame.Rect(652, 588, 276, 28), font, active=is_key)
+        if item_type in ("essential", "key"):
+            self._button(
+                screen,
+                "toggle_key",
+                f"Chave: {'sim' if is_key else 'nao'}",
+                pygame.Rect(652, 574, 276, 28),
+                font,
+                active=is_key,
+            )
 
     def _draw_exit_tab(self, screen: pygame.Surface) -> None:
         font = self._font(19)
@@ -1007,26 +1169,38 @@ class LevelEditor:
         if not self.objectives:
             screen.blit(font.render("Nenhum objetivo opcional.", True, MUTED), (652, 168))
         screen.blit(self._font(16).render("Roda: percorrer objetivos.", True, MUTED), (652, 298))
-        screen.blit(self._font(16).render("Tipos: visit_floor, collect_all_bonus,", True, MUTED), (652, 313))
-        screen.blit(self._font(16).render("return_to_start", True, MUTED), (652, 328))
         objective = self._selected_objective_config()
         if objective is None:
             screen.blit(font.render("Objetivos nao sao obrigatorios.", True, MUTED), (652, 326))
             return
-        fields = (
-            ("objective_id", "ID"),
-            ("objective_name", "Nome"),
-            ("objective_description", "Descricao"),
-            ("objective_type", "Tipo"),
-            ("objective_floor", "Andar (visit_floor)"),
-            ("objective_reward", "Recompensa"),
-        )
-        for index, (key, label) in enumerate(fields):
+        objective_type = objective.get("type", "visit_floor")
+        for key, label, x, y, width in (
+            ("objective_id", "ID", 652, 320, 134),
+            ("objective_reward", "Recompensa", 794, 320, 134),
+            ("objective_name", "Nome", 652, 362, 276),
+            ("objective_description", "Descricao", 652, 404, 276),
+        ):
             self._draw_field(
                 screen,
                 key,
                 label,
-                pygame.Rect(652, 346 + index * 40, 276, 38),
+                pygame.Rect(x, y, width, 38),
+                objective=objective,
+            )
+        self._draw_combo(
+            screen,
+            "objective_type",
+            f"Tipo: {OBJECTIVE_TYPE_LABELS.get(objective_type, str(objective_type))}",
+            pygame.Rect(652, 536, 200 if objective_type == "visit_floor" else 276, 32),
+            tuple(OBJECTIVE_TYPE_LABELS),
+            OBJECTIVE_TYPE_LABELS,
+        )
+        if objective_type == "visit_floor":
+            self._draw_field(
+                screen,
+                "objective_floor",
+                "Andar",
+                pygame.Rect(860, 536, 68, 38),
                 objective=objective,
             )
 
@@ -1240,6 +1414,23 @@ class LevelEditor:
             if self.path_dialog is not None:
                 self._handle_path_key(event)
                 return False
+            if self.dropdown_open and self.active_combo is not None:
+                choices = self._combo_options(self.active_combo)
+                if event.key == pygame.K_ESCAPE:
+                    self.dropdown_open = False
+                    self.active_combo = None
+                elif event.key in (pygame.K_UP, pygame.K_DOWN):
+                    direction = -1 if event.key == pygame.K_UP else 1
+                    self.dropdown_selection_index = min(
+                        max(self.dropdown_selection_index + direction, 0),
+                        len(choices) - 1,
+                    )
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    self._select_combo_option(
+                        self.active_combo,
+                        choices[self.dropdown_selection_index],
+                    )
+                return False
             if self.focused_field is not None:
                 if event.key == pygame.K_ESCAPE:
                     pygame.key.stop_text_input()
@@ -1284,6 +1475,10 @@ class LevelEditor:
                     self._move_cursor(destination, shift)
                 return False
             if event.key == pygame.K_ESCAPE:
+                if self.dropdown_open:
+                    self.dropdown_open = False
+                    self.active_combo = None
+                    return False
                 if self.edge_origin is not None:
                     self.edge_origin = None
                     self.mode = "select"
@@ -1301,6 +1496,13 @@ class LevelEditor:
         if event.type == pygame.MOUSEMOTION and self.dragging and self.selected_vertex is not None:
             if self.canvas_rect.collidepoint(event.pos):
                 self.move_vertex(self.selected_vertex, event.pos)
+            return False
+        if event.type == pygame.MOUSEWHEEL and self.dropdown_open and self.active_combo:
+            choices = self._combo_options(self.active_combo)
+            self.dropdown_selection_index = min(
+                max(self.dropdown_selection_index - event.y, 0),
+                len(choices) - 1,
+            )
             return False
         if event.type == pygame.MOUSEWHEEL and self.tab in ("items", "objectives"):
             collection = self.items if self.tab == "items" else self.objectives
@@ -1346,16 +1548,20 @@ class LevelEditor:
         if self.focused_field is not None and not self._commit_field():
             return False
         if self.dropdown_open:
+            combo = self.active_combo
+            option_prefix = f"{combo}:" if combo is not None else ""
             for key, rect in self._buttons.items():
-                if key.startswith("challenge:") and rect.collidepoint(event.pos):
-                    self._activate_button(key)
+                if option_prefix and key.startswith(option_prefix) and rect.collidepoint(event.pos):
+                    self._select_combo_option(combo, key.split(":", 1)[1])
                     return False
             if self._buttons.get(
-                "challenge_combo", pygame.Rect(0, 0, 0, 0)
+                f"{combo}_combo", pygame.Rect(0, 0, 0, 0)
             ).collidepoint(event.pos):
                 self.dropdown_open = False
+                self.active_combo = None
                 return False
             self.dropdown_open = False
+            self.active_combo = None
         for key, rect in self._field_rects.items():
             if rect.collidepoint(event.pos):
                 self._begin_edit(key, event.pos[0])
@@ -1606,7 +1812,10 @@ class LevelEditor:
                 converted: Any = (
                     None if key == "objective_floor" and not value else converter(value)
                 )
-                self.objectives[self.selected_objective][field] = converted
+                if key == "objective_type":
+                    self._set_objective_type(self.selected_objective, converted)
+                else:
+                    self.objectives[self.selected_objective][field] = converted
             else:
                 item_fields = {
                     "item_id": ("id", str),
@@ -1620,7 +1829,11 @@ class LevelEditor:
                 field, converter = item_fields[key]
                 item = self.items[self.selected_item]
                 previous_id = item.get("id")
-                self.update_item(self.selected_item, **{field: converter(value)})
+                converted = converter(value)
+                if key == "item_type":
+                    self._set_item_type(self.selected_item, converted)
+                else:
+                    self.update_item(self.selected_item, **{field: converted})
                 if key == "item_id" and isinstance(previous_id, str):
                     self._replace_item_reference(previous_id, value)
             pygame.key.stop_text_input()
@@ -1650,10 +1863,11 @@ class LevelEditor:
             self.tab = key.split(":", 1)[1]
             if self.tab != "edge" and self.mode == "edit_cost":
                 self.mode = "select"
-        elif key == "challenge_combo":
-            self.dropdown_open = not self.dropdown_open
-        elif key.startswith("challenge:"):
-            self._set_challenge_type(key.split(":", 1)[1])
+        elif key in ("challenge_combo", "item_type_combo", "objective_type_combo"):
+            self._toggle_combo(key.removesuffix("_combo"))
+        elif key.startswith(("challenge:", "item_type:", "objective_type:")):
+            combo, choice = key.split(":", 1)
+            self._select_combo_option(combo, choice)
         elif key.startswith("json:"):
             field = key.split(":", 1)[1]
             self.focused_field = f"json:{field}"
@@ -1732,6 +1946,7 @@ class LevelEditor:
             item = self._selected_item_config()
             if item is not None:
                 item["key"] = not bool(item.get("key", item.get("type") == "key"))
+                item["type"] = "key" if item["key"] else "essential"
                 if not item["key"] and isinstance(item.get("id"), str):
                     self._remove_item_references({item["id"]})
                 self._set_status(f"Chave definida como {'sim' if item['key'] else 'nao'}.")

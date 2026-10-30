@@ -46,7 +46,7 @@ Escolha **Continuar** para abrir a próxima fase disponível ou **Selecionar fas
 | Avançar após um resultado | `Enter` |
 | Rejogar após um resultado | `R` |
 
-As opções visíveis na tela também podem ser acionadas com o mouse. No seletor, a roda do mouse percorre a lista de fases.
+As opções visíveis na tela também podem ser acionadas com o mouse. No seletor, use a roda do mouse ou clique e arraste a barra lateral para percorrer as fases.
 
 ## Testes
 
