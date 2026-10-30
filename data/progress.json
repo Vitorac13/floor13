@@ -6,14 +6,29 @@
     "phase-03",
     "phase-04",
     "phase-05",
-    "phase-06"
+    "phase-06",
+    "phase-07",
+    "phase-08",
+    "phase-09",
+    "phase-10",
+    "phase-11",
+    "phase-12",
+    "phase-13"
   ],
   "completed_level_ids": [
     "phase-01",
     "phase-02",
     "phase-03",
     "phase-04",
-    "phase-05"
+    "phase-05",
+    "phase-06",
+    "phase-07",
+    "phase-08",
+    "phase-09",
+    "phase-10",
+    "phase-11",
+    "phase-12",
+    "phase-13"
   ],
   "level_scores": {
     "phase-01": 800,
@@ -21,14 +36,14 @@
     "phase-03": 300,
     "phase-04": 300,
     "phase-05": 500,
-    "phase-06": 0,
-    "phase-07": 0,
-    "phase-08": 0,
-    "phase-09": 0,
-    "phase-10": 0,
-    "phase-11": 0,
-    "phase-12": 0,
-    "phase-13": 0
+    "phase-06": 1000,
+    "phase-07": 800,
+    "phase-08": 800,
+    "phase-09": 600,
+    "phase-10": 500,
+    "phase-11": 650,
+    "phase-12": 2250,
+    "phase-13": 1300
   },
   "best_results": {
     "phase-01": {
@@ -97,6 +112,128 @@
       "completed_objectives": [
         "explore-floor-2"
       ]
+    },
+    "phase-06": {
+      "score": 1000,
+      "movements": 9,
+      "elapsed_seconds": 83.46014869999999,
+      "essential_items": [
+        "reliquia-6"
+      ],
+      "bonus_items": [
+        "planta-6"
+      ],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": [
+        "visit-floor-6-5",
+        "bonus-6"
+      ]
+    },
+    "phase-07": {
+      "score": 800,
+      "movements": 16,
+      "elapsed_seconds": 122.13627129999986,
+      "essential_items": [
+        "chave-prateada",
+        "chave-dourada"
+      ],
+      "bonus_items": [],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": [
+        "visit-floor-7-4"
+      ]
+    },
+    "phase-08": {
+      "score": 800,
+      "movements": 3,
+      "elapsed_seconds": 112.47050039999976,
+      "essential_items": [],
+      "bonus_items": [
+        "ficha-8"
+      ],
+      "completed_challenges": [
+        "economic_optimal_route"
+      ],
+      "completed_objectives": [
+        "bonus-8"
+      ]
+    },
+    "phase-09": {
+      "score": 600,
+      "movements": 17,
+      "elapsed_seconds": 18.452243899999303,
+      "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "euler_trail"
+      ],
+      "completed_objectives": [
+        "inspect-floor-9-6"
+      ]
+    },
+    "phase-10": {
+      "score": 500,
+      "movements": 6,
+      "elapsed_seconds": 46.94580880000285,
+      "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "minimum_round_trip"
+      ],
+      "completed_objectives": []
+    },
+    "phase-11": {
+      "score": 650,
+      "movements": 10,
+      "elapsed_seconds": 42.48657860000094,
+      "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "hamilton"
+      ],
+      "completed_objectives": [
+        "inspect-floor-11-5"
+      ]
+    },
+    "phase-12": {
+      "score": 2250,
+      "movements": 13,
+      "elapsed_seconds": 37.0247204000043,
+      "essential_items": [
+        "chave-norte-12",
+        "fusivel-12",
+        "cartao-lab-12",
+        "registro-12"
+      ],
+      "bonus_items": [
+        "mapa-12",
+        "relatorio-12"
+      ],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": [
+        "inspect-floor-12-7",
+        "bonus-12",
+        "return-12"
+      ]
+    },
+    "phase-13": {
+      "score": 1300,
+      "movements": 8,
+      "elapsed_seconds": 82.41849820000061,
+      "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "minimum_round_trip"
+      ],
+      "completed_objectives": [
+        "return-13"
+      ]
     }
   },
   "last_results": {
@@ -134,8 +271,8 @@
     },
     "phase-03": {
       "score": 300,
-      "movements": 4,
-      "elapsed_seconds": 10.832563000003574,
+      "movements": 3,
+      "elapsed_seconds": 3.878372800005309,
       "essential_items": [],
       "bonus_items": [],
       "completed_challenges": [
@@ -155,33 +292,164 @@
       "completed_objectives": []
     },
     "phase-05": {
+      "score": 300,
+      "movements": 6,
+      "elapsed_seconds": 13.445065200001409,
+      "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "minimum_round_trip"
+      ],
+      "completed_objectives": []
+    },
+    "phase-06": {
+      "score": 1000,
+      "movements": 9,
+      "elapsed_seconds": 83.46014869999999,
+      "essential_items": [
+        "reliquia-6"
+      ],
+      "bonus_items": [
+        "planta-6"
+      ],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": [
+        "visit-floor-6-5",
+        "bonus-6"
+      ]
+    },
+    "phase-07": {
+      "score": 800,
+      "movements": 16,
+      "elapsed_seconds": 122.13627129999986,
+      "essential_items": [
+        "chave-prateada",
+        "chave-dourada"
+      ],
+      "bonus_items": [],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": [
+        "visit-floor-7-4"
+      ]
+    },
+    "phase-08": {
+      "score": 400,
+      "movements": 3,
+      "elapsed_seconds": 79.08408909999707,
+      "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "economic_optimal_route"
+      ],
+      "completed_objectives": []
+    },
+    "phase-09": {
+      "score": 600,
+      "movements": 17,
+      "elapsed_seconds": 18.452243899999303,
+      "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "euler_trail"
+      ],
+      "completed_objectives": [
+        "inspect-floor-9-6"
+      ]
+    },
+    "phase-10": {
       "score": 500,
-      "movements": 5,
-      "elapsed_seconds": 13.52967040000658,
+      "movements": 6,
+      "elapsed_seconds": 46.94580880000285,
+      "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "minimum_round_trip"
+      ],
+      "completed_objectives": []
+    },
+    "phase-11": {
+      "score": 650,
+      "movements": 10,
+      "elapsed_seconds": 42.48657860000094,
+      "essential_items": [],
+      "bonus_items": [],
+      "completed_challenges": [
+        "hamilton"
+      ],
+      "completed_objectives": [
+        "inspect-floor-11-5"
+      ]
+    },
+    "phase-12": {
+      "score": 2250,
+      "movements": 13,
+      "elapsed_seconds": 37.0247204000043,
+      "essential_items": [
+        "chave-norte-12",
+        "fusivel-12",
+        "cartao-lab-12",
+        "registro-12"
+      ],
+      "bonus_items": [
+        "mapa-12",
+        "relatorio-12"
+      ],
+      "completed_challenges": [
+        "collect_and_exit"
+      ],
+      "completed_objectives": [
+        "inspect-floor-12-7",
+        "bonus-12",
+        "return-12"
+      ]
+    },
+    "phase-13": {
+      "score": 1300,
+      "movements": 8,
+      "elapsed_seconds": 12.640282300002582,
       "essential_items": [],
       "bonus_items": [],
       "completed_challenges": [
         "minimum_round_trip"
       ],
       "completed_objectives": [
-        "explore-floor-2"
+        "return-13"
       ]
     }
   },
-  "total_score": 2600,
+  "total_score": 10500,
   "unlocked_levels": [
     1,
     2,
     3,
     4,
     5,
-    6
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
   ],
   "completed_levels": [
     1,
     2,
     3,
     4,
-    5
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13
   ]
 }

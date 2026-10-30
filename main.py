@@ -1565,8 +1565,8 @@ class ElevatorPrototype:
         self._text(visited_route, self.small_font, TEXT, (165, 451))
 
         for index, edge in enumerate(self.euler_challenge.required_edges):
-            column = index // 4
-            row = index % 4
+            column = index // 6
+            row = index % 6
             used_edge = edge in self.euler_game.used_edges
             state = "percorrida" if used_edge else "pendente"
             color = ACCENT if used_edge else MUTED
@@ -1574,7 +1574,7 @@ class ElevatorPrototype:
                 f"{edge[0]:02d}-{edge[1]:02d}: {state}",
                 self.small_font,
                 color,
-                (94 + column * 215, 477 + row * 20),
+                (94 + column * 115, 465 + row * 15),
             )
 
         if self.euler_game.is_complete:
