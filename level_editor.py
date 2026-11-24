@@ -12,6 +12,7 @@ import re
 import pygame
 
 from challenge_registry import ChallengeRegistry
+from euler_challenge import EulerChallengeManager
 from level_manager import DEFAULT_LEVELS_DIR, LevelManager
 
 
@@ -233,12 +234,59 @@ class LevelEditor:
 
     def validate(self) -> None:
         try:
-            level = LevelManager.from_config(copy.deepcopy(self.config))
+            config = copy.deepcopy(self.config)
+            generated_trail = False
+            challenge = config.get("challenge")
+            if isinstance(challenge, dict) and challenge.get("type") == "euler":
+                # O carregador exige a trilha no JSON; no editor ela pode ser
+                # calculada a partir do grafo ainda em construcao.
+                preview = copy.deepcopy(config)
+                preview["challenge"] = {"type": "collect_and_exit"}
+                graph = LevelManager.from_config(preview).graph
+                start = config.get("start_floor")
+                end = config.get("exit_floor")
+                trail = EulerChallengeManager.find_eulerian_trail(graph, start, end)
+                if trail is None:
+                    raise ValueError(
+                        "O grafo de Euler deve ser conectado, sem lacos, e ter "
+                        "inicio e saida como os dois vertices de grau impar."
+                    )
+                reference = challenge.get("reference_trail")
+                reference_floors_valid = (
+                    isinstance(reference, list)
+                    and all(type(floor) is int for floor in reference)
+                )
+                reference_edges = [
+                    frozenset((first, second))
+                    for first, second in zip(reference, reference[1:])
+                ] if reference_floors_valid else []
+                valid_reference = (
+                    reference_floors_valid
+                    and len(reference) == graph.edge_count + 1
+                    and reference[0] == start
+                    and reference[-1] == end
+                    and len(set(reference_edges)) == graph.edge_count
+                    and all(
+                        graph.has_edge(first, second)
+                        for first, second in zip(reference, reference[1:])
+                    )
+                )
+                if not valid_reference:
+                    challenge["reference_trail"] = list(trail)
+                    generated_trail = True
+            level = LevelManager.from_config(config)
             LevelManager.validate(level)
         except (TypeError, ValueError, KeyError) as error:
             self._set_status(f"Fase invalida: {error}", error=True)
             raise ValueError(str(error)) from error
-        self._set_status("Fase valida e carregavel pelo jogo.")
+        if generated_trail:
+            self.config["challenge"]["reference_trail"] = config["challenge"][
+                "reference_trail"
+            ]
+            self._cache_current_challenge_parameters()
+            self._set_status("Fase valida. Trilha de Euler gerada por Fleury.")
+        else:
+            self._set_status("Fase valida e carregavel pelo jogo.")
 
     def export_file(self, path: str | Path, overwrite: bool = False) -> Path:
         self.validate()

@@ -511,6 +511,63 @@ class LevelEditorTests(unittest.TestCase):
                 self.editor.export_file(output)
             self.editor.export_file(output, overwrite=True)
 
+    def test_euler_validation_generates_reference_trail_with_fleury(self) -> None:
+        self.editor.add_vertex()
+        self.editor.add_vertex()
+        self.editor.add_vertex()
+        for first, second in ((1, 2), (2, 3), (3, 1), (1, 4)):
+            self.editor.add_edge(first, second)
+        self.editor.config["exit_floor"] = 4
+        self.editor._set_challenge_type("euler")
+
+        self.editor.validate()
+
+        trail = self.editor.config["challenge"]["reference_trail"]
+        self.assertEqual((trail[0], trail[-1]), (1, 4))
+        self.assertEqual(len(trail), 5)
+        self.assertEqual(
+            {frozenset(edge) for edge in zip(trail, trail[1:])},
+            {frozenset(edge[:2]) for edge in self.editor.edges},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / f"{self.editor.config['id']}.json"
+            self.editor.export_file(output)
+            self.assertEqual(
+                LevelManager.load_level(self.editor.config["id"], directory)
+                .challenge_parameters["reference_trail"],
+                trail,
+            )
+
+    def test_euler_validation_rejects_non_eulerian_graph_without_changing_trail(self) -> None:
+        self.editor.add_vertex()
+        self.editor.add_vertex()
+        self.editor.add_edge(1, 2)
+        self.editor.add_edge(1, 3)
+        self.editor.config["exit_floor"] = 3
+        self.editor._set_challenge_type("euler")
+
+        with self.assertRaisesRegex(ValueError, "dois vertices de grau impar"):
+            self.editor.validate()
+        self.assertEqual(self.editor.config["challenge"]["reference_trail"], [])
+
+    def test_euler_validation_refreshes_stale_trail_after_graph_edit(self) -> None:
+        self.editor.add_vertex()
+        self.editor.config["exit_floor"] = 2
+        self.editor.add_edge(1, 2)
+        self.editor._set_challenge_type("euler")
+        self.editor.validate()
+        self.assertEqual(self.editor.config["challenge"]["reference_trail"], [1, 2])
+
+        self.editor.add_vertex()
+        self.editor.add_vertex()
+        self.editor.add_edge(1, 3)
+        self.editor.add_edge(3, 4)
+        self.editor.add_edge(4, 1)
+        self.editor.validate()
+        trail = self.editor.config["challenge"]["reference_trail"]
+        self.assertEqual(len(trail), 5)
+        self.assertEqual((trail[0], trail[-1]), (1, 2))
+
     def test_export_dialog_waits_for_explicit_overwrite_confirmation(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "existing.json"

@@ -74,7 +74,7 @@ O registro em `challenge_registry.py` associa cada valor de `challenge.type` a u
 
 Os desafios `economic` e `final` usam Dijkstra e exigem pesos estritamente positivos. A validação de `euler` exige grafo conectado, sem laços, com início e fim nos dois vértices de grau ímpar e uma trilha que cubra as arestas uma vez cada. A validação `hamilton` verifica a existência de uma rota compatível com os extremos configurados.
 
-Os algoritmos genéricos em `algorithms.py` são busca em largura (BFS), Dijkstra e verificação de conectividade. BFS minimiza a quantidade de arestas sem considerar os pesos; Dijkstra minimiza o custo ponderado.
+Os algoritmos genéricos em `algorithms.py` são busca em largura (BFS), Dijkstra e verificação de conectividade. BFS minimiza a quantidade de arestas sem considerar os pesos; Dijkstra minimiza o custo ponderado. O desafio de Euler usa o algoritmo de Fleury para encontrar uma trilha, evitando pontes enquanto houver outra conexão disponível.
 
 ## 5. Fases incluídas
 
@@ -137,7 +137,7 @@ A validação verifica, entre outras coisas, a existência dos andares inicial e
 
 ### Pelo editor visual
 
-Abra **Editor de fases** no menu. O editor permite criar ou abrir uma fase, posicionar andares, criar e remover conexões, editar andares inicial e de saída, configurar itens e objetivos, selecionar tipo e parâmetros de desafio e validar, salvar ou exportar o JSON. As comboboxes de itens oferecem `essential`, `bonus` e `key`; as de objetivos oferecem `visit_floor`, `collect_all_bonus` e `return_to_start`. O campo de andar do objetivo aparece apenas para `visit_floor`; mudar o tipo não apaga o valor já configurado. As listas também aceitam navegação pelas setas do teclado.
+Abra **Editor de fases** no menu. O editor permite criar ou abrir uma fase, posicionar andares, criar e remover conexões, editar andares inicial e de saída, configurar itens e objetivos, selecionar tipo e parâmetros de desafio e validar, salvar ou exportar o JSON. As comboboxes de itens oferecem `essential`, `bonus` e `key`; as de objetivos oferecem `visit_floor`, `collect_all_bonus` e `return_to_start`. O campo de andar do objetivo aparece apenas para `visit_floor`; mudar o tipo não apaga o valor já configurado. As listas também aceitam navegação pelas setas do teclado. Ao validar uma fase do tipo `euler`, o editor verifica se o grafo admite uma trilha entre os andares inicial e de saída e gera `reference_trail` com Fleury quando o campo está vazio ou desatualizado. Uma trilha existente e válida é preservada.
 
 Uma fase só aparece no jogo quando o arquivo JSON está dentro da pasta configurada em `levels/` e passa pela validação. Depois de alterar os arquivos enquanto o jogo está aberto, reinicie-o para executar novamente a descoberta.
 

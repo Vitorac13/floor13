@@ -6,6 +6,7 @@ from economic_game_state import EconomicGameState
 from euler_challenge import EulerChallengeManager
 from euler_game_state import EulerGameState
 from game_state import GameState
+from graph import Graph
 from hamilton_challenge import HamiltonChallengeManager
 from hamilton_game_state import HamiltonGameState
 from level_manager import LevelManager
@@ -61,6 +62,16 @@ class EulerChallengeTests(unittest.TestCase):
         ]
         self.assertEqual(set(traversed_edges), set(self.challenge.required_edges))
         self.assertEqual(len(traversed_edges), len(set(traversed_edges)))
+
+    def test_fleury_avoids_a_bridge_until_the_cycle_is_used(self) -> None:
+        graph = Graph((1, 2, 3, 4))
+        for first, second in ((1, 2), (1, 3), (3, 4), (4, 1)):
+            graph.add_edge(first, second)
+
+        self.assertEqual(
+            EulerChallengeManager.find_eulerian_trail(graph, 1, 2),
+            (1, 3, 4, 1, 2),
+        )
 
     def test_movement_requires_an_existing_connection(self) -> None:
         message = self.game.move_to(5)

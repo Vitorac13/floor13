@@ -59,7 +59,7 @@ class EulerChallengeManager:
     def find_eulerian_trail(
         graph: Graph[int], start_floor: int, end_floor: int
     ) -> tuple[int, ...] | None:
-        """Find a trail using every simple-graph edge exactly once."""
+        """Encontra uma trilha euleriana pelo algoritmo de Fleury."""
         if not graph.has_vertex(start_floor) or not graph.has_vertex(end_floor):
             return None
         if any(
@@ -69,33 +69,55 @@ class EulerChallengeManager:
         ):
             return None
 
-        edges = frozenset(
-            edge_key(first, second)
-            for first in graph.vertices
-            for second, _ in graph.neighbors(first)
-            if first != second
-        )
-        route = [start_floor]
-        used_edges: set[Edge] = set()
-
-        def search(current: int) -> tuple[int, ...] | None:
-            if len(used_edges) == len(edges):
-                return tuple(route) if current == end_floor else None
-
-            for neighbor, _ in graph.neighbors(current):
-                edge = edge_key(current, neighbor)
-                if edge in used_edges:
-                    continue
-                used_edges.add(edge)
-                route.append(neighbor)
-                result = search(neighbor)
-                if result is not None:
-                    return result
-                route.pop()
-                used_edges.remove(edge)
+        if not is_connected(graph):
+            return None
+        adjacency = {
+            floor: {neighbor for neighbor, _ in graph.neighbors(floor)}
+            for floor in graph.vertices
+        }
+        odd_vertices = {floor for floor, neighbors in adjacency.items() if len(neighbors) % 2}
+        if odd_vertices != {start_floor, end_floor}:
             return None
 
-        return search(start_floor)
+        def reachable(origin: int) -> set[int]:
+            visited = {origin}
+            pending = [origin]
+            while pending:
+                for neighbor in adjacency[pending.pop()]:
+                    if neighbor not in visited:
+                        visited.add(neighbor)
+                        pending.append(neighbor)
+            return visited
+
+        route = [start_floor]
+        current = start_floor
+        remaining = graph.edge_count
+        while remaining:
+            neighbors = adjacency[current]
+            if not neighbors:
+                return None
+            before = reachable(current) if len(neighbors) > 1 else set()
+            chosen = None
+            for neighbor in sorted(neighbors):
+                if len(neighbors) == 1:
+                    chosen = neighbor
+                    break
+                adjacency[current].remove(neighbor)
+                adjacency[neighbor].remove(current)
+                is_bridge = len(reachable(current)) < len(before)
+                adjacency[current].add(neighbor)
+                adjacency[neighbor].add(current)
+                if not is_bridge:
+                    chosen = neighbor
+                    break
+            if chosen is None:
+                return None
+            adjacency[current].remove(chosen)
+            adjacency[chosen].remove(current)
+            current = chosen
+            route.append(current)
+            remaining -= 1
+        return tuple(route) if current == end_floor else None
 
     @classmethod
     def validate(cls, challenge: EulerChallenge) -> None:
