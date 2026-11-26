@@ -111,11 +111,14 @@ class GameState:
 
         return f"Voce chegou ao andar {destination:02d}."
 
-    def collect_items_here(self) -> tuple[Collectible, ...]:
+    def collect_items_here(self, item_id: str | None = None) -> tuple[Collectible, ...]:
         if self.is_complete:
             return ()
 
-        collected = self.items_on_current_floor
+        collected = tuple(
+            item for item in self.items_on_current_floor
+            if item_id is None or item.identifier == item_id
+        )
         for item in collected:
             if item.kind is ItemKind.REQUIRED:
                 self.collected_required.add(item.identifier)

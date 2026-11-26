@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 import secrets
 import sys
 from dataclasses import asdict
@@ -75,9 +76,10 @@ def state_payload(session: dict[str, Any], message: str = "") -> dict[str, Any]:
         "level": level_payload(level),
         "current_floor": current,
         "visited_sequence": list(getattr(state, "visited_sequence", [])),
-        "visited_floors": list(getattr(state, "visited_floors", [])),
+        "visited_floors": list(getattr(state, "visited_floors", dict.fromkeys(getattr(state, "visited_sequence", [])))),
         "valid_destinations": list(getattr(state, "valid_destinations", neighbors)),
         "is_complete": bool(getattr(state, "is_complete", False)),
+        "is_finished": bool(getattr(state, "is_finished", False)),
         "is_blocked": bool(getattr(state, "is_blocked", False)),
         "message": message,
     }
@@ -97,6 +99,10 @@ def state_payload(session: dict[str, Any], message: str = "") -> dict[str, Any]:
         payload["challenge_progress"] = list(state.progress)
     if hasattr(state, "total_cost"):
         payload["total_cost"] = state.total_cost
+    if hasattr(state, "optimal_cost"):
+        payload["optimal_cost"] = state.optimal_cost
+    elif hasattr(getattr(state, "challenge", None), "minimum_total_cost"):
+        payload["optimal_cost"] = state.challenge.minimum_total_cost
     return payload
 
 
@@ -172,7 +178,14 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_error(403)
         if not file_path.is_file():
             return self.send_error(404)
-        content_type = "text/html; charset=utf-8" if file_path.suffix == ".html" else "text/css; charset=utf-8" if file_path.suffix == ".css" else "application/javascript; charset=utf-8"
+        content_type = {
+            ".html": "text/html",
+            ".css": "text/css",
+            ".js": "application/javascript",
+            ".svg": "image/svg+xml",
+        }.get(file_path.suffix) or mimetypes.guess_type(file_path.name)[0] or "application/octet-stream"
+        if file_path.suffix in {".html", ".css", ".js", ".svg"}:
+            content_type += "; charset=utf-8"
         body = file_path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
@@ -196,7 +209,7 @@ class Handler(BaseHTTPRequestHandler):
                 if path.endswith("/move"):
                     message = state.move_to(int(data["destination"]))
                 elif path.endswith("/collect"):
-                    collected = state.collect_items_here() if hasattr(state, "collect_items_here") else ()
+                    collected = state.collect_items_here(data.get("item_id")) if hasattr(state, "collect_items_here") else ()
                     message = f"{len(collected)} item(ns) coletado(s)."
                 else:
                     state.reset()
